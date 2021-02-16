@@ -47,14 +47,14 @@ jobs:
       - name: Install ocamlbuild
         run: opam install --yes ocamlbuild.0.14.0
         
-      - name: Install sphinx
-        run: pip install Sphinx==2.4.4
+      #- name: Install sphinx
+      #  run: pip install Sphinx==2.4.4
         
-      - name: Install bikeshed
-        run: |
-            git clone https://github.com/tabatkins/bikeshed.git
-            pip install --editable $PWD/bikeshed
-            bikeshed update
+      #- name: Install bikeshed
+      #  run: |
+      #      git clone https://github.com/tabatkins/bikeshed.git
+      #      pip install --editable $PWD/bikeshed
+      #      bikeshed update
             
       - name: Wasm testsuite
         run: ./interpreter/meta/travis/build-test.sh
