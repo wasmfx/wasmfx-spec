@@ -57,7 +57,9 @@ jobs:
       #      bikeshed update
             
       - name: Wasm testsuite
-        run: ./interpreter/meta/travis/build-test.sh
+        run: |
+            eval $(opam env)
+            ./interpreter/meta/travis/build-test.sh
         
       #- name: Deploy documentation
       #  run: ./document/travis-deploy.sh
