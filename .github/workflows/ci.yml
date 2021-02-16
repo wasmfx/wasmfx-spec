@@ -35,12 +35,12 @@ jobs:
       # Initialise the OCaml environment
       - name: Use OCaml ${{ matrix.ocaml-version }}
         uses: avsm/setup-ocaml@v1
-        run: eval $(opam env)
         with:
           ocaml-version: ${{ matrix.ocaml-version }}
 
       - name: Environment
         run: |
+            eval $(opam env)
             opam --version
             ocaml --version
 
