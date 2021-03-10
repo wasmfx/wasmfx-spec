@@ -18,43 +18,61 @@
   (event $yield (import "coop" "yield"))
   (event $fork (import "coop" "fork") (param (ref $proc)))
 
+  (exception $too-many-messages)
+
   (type $iproc (func (param i32)))
   (type $icont (cont $iproc))
 
-  ;; dummy implementation of mailboxes
+  ;; Stupid implementation of mailboxes that raises an exception if
+  ;; more than one messages is sent to a mailbox.
   ;;
-  ;; to avoid the dynamic memory managment required to actually
-  ;; implement mailboxes all messages are multiplexed to a single
-  ;; global!
-  ;;
-  ;; This gives completely the wrong semantics, but at least the
-  ;; functions have the correct type signatures!
+  ;; Sufficient for the simple chain example.
 
-  (global $the-mb (mut i32) (i32.const 0))
+  ;; -1 means empty
+
+  (memory 0)
+
+  (func $empty-mb (param $mb i32) (result i32)
+    (i32.eq (i32.load (local.get $mb)) (i32.const -1))
+  )
 
   (func $new-mb (result i32)
-     (i32.const 0)
+     (local $mb i32)
+     (memory.grow (i32.const 1))
+     (local.set $mb)
+     (i32.store (local.get $mb) (i32.const -1))
+     (return (local.get $mb))
   )
 
   (func $send-to-mb (param $v i32) (param $mb i32)
-    (global.set $the-mb (local.get $v))
-  )
-
-  (func $empty-mb (param $mb i32) (result i32)
-    (i32.eqz (global.get $the-mb))
+    (if (call $empty-mb (local.get $mb))
+      (then (i32.store (local.get $mb) (local.get $v)))
+      (else (throw $too-many-messages))
+    )
   )
 
   (func $recv-from-mb (param $mb i32) (result i32)
-    (global.get $the-mb)
-    (global.set $the-mb (i32.const 0))
+    (i32.load (local.get $mb))
+    (i32.store (local.get $mb) (i32.const -1))
   )
 
+  ;; actor interface
   (event $self (export "self") (result i32))
   (event $spawn (export "spawn") (param (ref $proc)) (result i32))
   (event $send (export "send") (param i32 i32))
   (event $recv (export "recv") (result i32))
 
   (elem declare func $act-res $act-nullary)
+
+  ;; Rather than having a loop in the recv clause, it would be nice if
+  ;; we could implement blocking by reinvoking recv with the original
+  ;; handler. This is a common pattern nicely supported by shallow but
+  ;; not deep handlers. However, it would require composing the new
+  ;; reinvoked recv with the continuation. This can be simulated
+  ;; (inefficiently, I suspect) by resuming the continuation with an
+  ;; identity handler and then building a new continuation. Might an
+  ;; instruction for composing or extending continuations be
+  ;; palatable?
 
   ;; resume with $ik applied to $res
   (func $act-res (param $mine i32) (param $res i32) (param $ik (ref $icont))
@@ -72,39 +90,36 @@
              )
              (return)
           ) ;; recv
-          (call $log (i32.const 14))
-          (local.set $ik)
-          (if (call $empty-mb (local.get $mine))
-              (then (suspend $yield)
-        (call $log (i32.const 55))
-                    (suspend $recv)
-        (call $log (i32.const 66))
-                    (local.set $res)
-                    (return_call_ref (local.get $mine) (local.get $res) (local.get $ik) (ref.func $act-res)))
-          )
-          (call $recv-from-mb (local.get $mine))
-          (local.set $res)
-          (return_call_ref (local.get $mine) (local.get $res) (local.get $ik) (ref.func $act-res))
+          (let (local $ik (ref $icont))
+            (loop $l
+              (if (call $empty-mb (local.get $mine))
+                  (then (suspend $yield)
+                        (br $l))
+              )
+            )
+            (call $recv-from-mb (local.get $mine))
+            (local.set $res)
+            (return_call_ref (local.get $mine) (local.get $res) (local.get $ik) (ref.func $act-res)))
+          (unreachable)
         ) ;; send
-        (call $log (i32.const 13))
         (let (param i32 i32) (local $k (ref $cont))
           (call $send-to-mb)
           (return_call_ref (local.get $mine) (local.get $k) (ref.func $act-nullary)))
         (unreachable)
       ) ;; spawn
-      (call $log (i32.const 12))
-      (local.set $ik)
-      (let (local $you (ref $proc))
+      (let (local $you (ref $proc)) (local $ik (ref $icont))
         (call $new-mb)
         (local.set $res)
         (suspend $fork (func.bind (type $proc) (local.get $res)
                                   (cont.new (type $cont) (local.get $you)) (ref.func $act-nullary)))
+        (return_call_ref (local.get $mine) (local.get $res) (local.get $ik) (ref.func $act-res))
       )
-      (return_call_ref (local.get $mine) (local.get $res) (local.get $ik) (ref.func $act-res))
+      (unreachable)
     ) ;; self
-    (call $log (i32.const 11))
-    (local.set $ik)
-    (return_call_ref (local.get $mine) (local.get $mine) (local.get $ik) (ref.func $act-res))
+    (let (local $ik (ref $icont))
+      (return_call_ref (local.get $mine) (local.get $mine) (local.get $ik) (ref.func $act-res))
+    )
+    (unreachable)
   )
 
   ;; resume with nullary continuation
@@ -124,27 +139,23 @@
              )
              (return)
           ) ;; recv
-          (call $log (i32.const 24))
           (let (local $ik (ref $icont))
-            (if (call $empty-mb (local.get $mine))
+            (loop $l
+              (if (call $empty-mb (local.get $mine))
                   (then (suspend $yield)
-        (call $log (i32.const 77))
-                        (suspend $recv)
-        (call $log (i32.const 88))
-                        (local.set $res)
-                        (return_call_ref (local.get $mine) (local.get $res) (local.get $ik) (ref.func $act-res)))
+                        (br $l))
+              )
             )
             (call $recv-from-mb (local.get $mine))
             (local.set $res)
             (return_call_ref (local.get $mine) (local.get $res) (local.get $ik) (ref.func $act-res)))
           (unreachable)
         ) ;; send
-        (call $log (i32.const 23))
-        (local.set $k)
-        (call $send-to-mb)
-        (return_call_ref (local.get $mine) (local.get $k) (ref.func $act-nullary))
+        (let (param i32 i32) (local $k (ref $cont))
+          (call $send-to-mb)
+          (return_call_ref (local.get $mine) (local.get $k) (ref.func $act-nullary)))
+        (unreachable)
       ) ;; spawn
-      (call $log (i32.const 22))
       (let (local $you (ref $proc)) (local $ik (ref $icont))
         (call $new-mb)
         (local.set $res)
@@ -154,7 +165,6 @@
       )
       (unreachable)
     ) ;; self
-    (call $log (i32.const 21))
     (let (local $ik (ref $icont))
       (return_call_ref (local.get $mine) (local.get $mine) (local.get $ik) (ref.func $act-res))
     )
@@ -162,7 +172,7 @@
   )
 
   (func $act (export "act") (param $f (ref $proc))
-    (call $act-nullary (i32.const 0) (cont.new (type $cont) (local.get $f)))
+    (call $act-nullary (call $new-mb) (cont.new (type $cont) (local.get $f)))
   )
 )
 (register "actor")
@@ -242,13 +252,11 @@
           (br $l)  ;; thread terminated
         )
         ;; on $fork, proc and cont on stack
-        (call $log (i32.const 32))
         (call $enqueue)                          ;; continuation of old thread
         (call $enqueue (cont.new (type $cont)))  ;; new thread
         (br $l)
       )
       ;; on $yield, cont on stack
-      (call $log (i32.const 31))
       (call $enqueue)
       (br $l)
     )
@@ -301,15 +309,14 @@
   )
 
   (func $spawnMany (param $p i32) (param $n i32)
-    (call $log (i32.const 0))
     (if (i32.eqz (local.get $n))
       (then (suspend $send (i32.const 42) (local.get $p))
-            (return)))
-    ;; else
-    (return_call_ref (suspend $spawn (func.bind (type $proc) (local.get $p) (ref.func $next)))
-                     (i32.sub (local.get $n) (i32.const 1))
-                     (ref.func $spawnMany))
+            (return))
+      (else (return_call_ref (suspend $spawn (func.bind (type $proc) (local.get $p) (ref.func $next)))
+                             (i32.sub (local.get $n) (i32.const 1))
+                             (ref.func $spawnMany)))
 
+    )
   )
 
   ;; send the message 42 through a chain of n processes
@@ -337,8 +344,4 @@
   )
 )
 
-;; currently this fails due to an unhandled event "recv"
-;;
-;; it looks like the inner handler may be being discarded when an
-;; event bubbles up to an outer handler
-(assert_return (invoke "run-chain" (i32.const 2)))
+(assert_return (invoke "run-chain" (i32.const 64)))
