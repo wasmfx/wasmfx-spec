@@ -8,13 +8,15 @@
   (event $send (export "send") (param i32))
   (event $receive (export "receive") (result i32))
 
+  (elem declare func $piper $copiper)
+
   (func $piper (param $n i32) (param $p (ref $pcont)) (param $c (ref $ccont))
      (block $on-receive (result (ref $ccont))
         (resume (event $receive $on-receive) (local.get $n) (local.get $c))
         (return)
      ) ;; receive
      (local.set $c)
-     (call $copiper (local.get $c) (local.get $p))
+     (return_call_ref (local.get $c) (local.get $p) (ref.func $copiper))
   )
 
   (func $copiper (param $c (ref $ccont)) (param $p (ref $pcont))
@@ -25,7 +27,7 @@
      ) ;; send
      (local.set $p)
      (local.set $n)
-     (call $piper (local.get $n) (local.get $p) (local.get $c))
+     (return_call_ref (local.get $n) (local.get $p) (local.get $c) (ref.func $piper))
   )
 
   (func $pipe (export "pipe") (param $p (ref $producer)) (param $c (ref $consumer))

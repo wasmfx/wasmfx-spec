@@ -9,6 +9,8 @@
   (type $gk (cont $gf))
   (type $sk (cont $sf))
 
+  (elem declare func $getting $setting)
+
   (func $getting (param $k (ref $gk)) (param $s i32) (result i32)
      (block $on_get (result (ref $gk))
        (block $on_set (result i32 (ref $sk))
@@ -18,12 +20,11 @@
           (return)
         )
         ;; on set
-        (call $setting)
-        (return)
+        (return_call_ref (ref.func $setting))
       )
       ;; on get
       (local.get $s)
-      (call $getting)
+      (return_call_ref (ref.func $getting))
   )
 
   (func $setting (param $s i32) (param $k (ref $sk)) (result i32)
@@ -35,12 +36,11 @@
           (return)
         )
         ;; on set
-        (call $setting)
-        (return)
+        (return_call_ref (ref.func $setting))
       )
       ;; on get
       (local.get $s)
-      (call $getting)
+      (return_call_ref (ref.func $getting))
   )
 
   (func $f (result i32)
