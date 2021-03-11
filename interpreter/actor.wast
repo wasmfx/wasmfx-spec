@@ -26,7 +26,7 @@
 
   ;; Stupid implementation of mailboxes that raises an exception if
   ;; there are too many mailboxes or if more than one messages is sent
-  ;; to a mailbox.
+  ;; to any given mailbox.
   ;;
   ;; Sufficient for the simple chain example.
 
@@ -79,17 +79,34 @@
   (event $send (export "send") (param i32 i32))
   (event $recv (export "recv") (result i32))
 
-  (elem declare func $act-res $act-nullary)
+  (elem declare func $act-res $act-nullary $recv-againf)
 
   ;; Rather than having a loop in the recv clause, it would be nice if
   ;; we could implement blocking by reinvoking recv with the original
   ;; handler. This is a common pattern nicely supported by shallow but
   ;; not deep handlers. However, it would require composing the new
-  ;; reinvoked recv with the continuation. This can be simulated
-  ;; (inefficiently, I suspect) by resuming the continuation with an
-  ;; identity handler and then building a new continuation. Might an
-  ;; instruction for composing or extending continuations be
-  ;; palatable?
+  ;; reinvoked recv with the continuation. This can already be
+  ;; simulated (inefficiently, perhaps) by resuming the continuation
+  ;; with an identity handler and then building a new
+  ;; continuation. Might an instruction for composing or extending
+  ;; continuations be palatable / desirable?
+  ;;
+  ;; (Continuation composition / extension generalises partial
+  ;; application of continuations - so also provides a way of avoiding
+  ;; the kind of code duplication we see in $act-res and
+  ;; $act-nullary.)
+
+  ;; compose recv with an existing continuation
+  (func $recv-againf (param $ik (ref $icont))
+    (local $res i32)
+    (suspend $recv)
+    (local.set $res)
+    (resume (local.get $res) (local.get $ik))
+  )
+
+  (func $recv-again (param $ik (ref $icont)) (result (ref $cont))
+    (cont.new (type $cont) (func.bind (type $proc) (local.get $ik) (ref.func $recv-againf)))
+  )
 
   ;; resume with $ik applied to $res
   (func $act-res (param $mine i32) (param $res i32) (param $ik (ref $icont))
@@ -114,6 +131,12 @@
                         (br $l))
               )
             )
+            ;; alternative version - reinvoke receive
+            ;;
+            ;; (if (call $empty-mb (local.get $mine))
+            ;;     (then (suspend $yield)
+            ;;           (return_call_ref (local.get $mine) (call $recv-again (local.get $ik)) (ref.func $act-nullary)))
+            ;; )
             (call $recv-from-mb (local.get $mine))
             (local.set $res)
             (return_call_ref (local.get $mine) (local.get $res) (local.get $ik) (ref.func $act-res)))
@@ -348,7 +371,7 @@
     ;; yield
     (call $enqueue)
     (call $dequeue)
-    (return_call_ref (ref.func $coop-tk))
+    (return_call_ref (ref.func $coop-ytk))
   )
 
   (func $scheduler (export "scheduler") (param $main (ref $proc))
