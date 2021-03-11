@@ -18,42 +18,59 @@
   (event $yield (import "coop" "yield"))
   (event $fork (import "coop" "fork") (param (ref $proc)))
 
+  (exception $too-many-mailboxes)
   (exception $too-many-messages)
 
   (type $iproc (func (param i32)))
   (type $icont (cont $iproc))
 
   ;; Stupid implementation of mailboxes that raises an exception if
-  ;; more than one messages is sent to a mailbox.
+  ;; there are too many mailboxes or if more than one messages is sent
+  ;; to a mailbox.
   ;;
   ;; Sufficient for the simple chain example.
 
   ;; -1 means empty
 
-  (memory 0)
+  (memory 10000)
+
+  (global $msize (mut i32) (i32.const 0))
 
   (func $empty-mb (param $mb i32) (result i32)
-    (i32.eq (i32.load (local.get $mb)) (i32.const -1))
+    (local $offset i32)
+    (local.set $offset (i32.mul (local.get $mb) (i32.const 4)))
+    (i32.eq (i32.load (local.get $offset)) (i32.const -1))
   )
 
   (func $new-mb (result i32)
      (local $mb i32)
-     (memory.grow (i32.const 1))
-     (local.set $mb)
-     (i32.store (local.get $mb) (i32.const -1))
+
+     (if (i32.ge_u (i32.mul (global.get $msize) (i32.const 4))
+                   (i32.sub (i32.const 10000) (i32.const 4)))
+         (then (throw $too-many-mailboxes))
+     )
+
+     (local.set $mb (global.get $msize))
+     (global.set $msize (i32.add (global.get $msize) (i32.const 1)))
      (return (local.get $mb))
   )
 
   (func $send-to-mb (param $v i32) (param $mb i32)
+    (local $offset i32)
+    (local.set $offset (i32.mul (local.get $mb) (i32.const 4)))
     (if (call $empty-mb (local.get $mb))
-      (then (i32.store (local.get $mb) (local.get $v)))
+      (then (i32.store (local.get $offset) (local.get $v)))
       (else (throw $too-many-messages))
     )
   )
 
   (func $recv-from-mb (param $mb i32) (result i32)
-    (i32.load (local.get $mb))
-    (i32.store (local.get $mb) (i32.const -1))
+    (local $v i32)
+    (local $offset i32)
+    (local.set $offset (i32.mul (local.get $mb) (i32.const 4)))
+    (local.set $v (i32.load (local.get $offset)))
+    (i32.store (local.get $offset) (i32.const -1))
+    (local.get $v)
   )
 
   ;; actor interface
@@ -172,6 +189,7 @@
   )
 
   (func $act (export "act") (param $f (ref $proc))
+    (memory.fill (i32.const 0) (i32.const -1) (i32.const 10000))
     (call $act-nullary (call $new-mb) (cont.new (type $cont) (local.get $f)))
   )
 )
@@ -182,8 +200,6 @@
 (module $scheduler
   (type $proc (func))
   (type $cont (cont $proc))
-
-  (func $log (import "spectest" "print_i32") (param i32))
 
   (event $yield (import "coop" "yield"))
   (event $fork (import "coop" "fork") (param (ref $proc)))
@@ -240,26 +256,103 @@
     (global.set $qback (i32.add (global.get $qback) (i32.const 1)))
   )
 
-  (func $scheduler (export "scheduler") (param $main (ref $proc))
-    (call $enqueue (cont.new (type $cont) (local.get $main)))
-    (loop $l
-      (if (call $queue-empty) (then (return)))
-      (block $on_yield (result (ref $cont))
-        (block $on_fork (result (ref $proc) (ref $cont))
-          (resume (event $yield $on_yield) (event $fork $on_fork)
-            (call $dequeue)
-          )
-          (br $l)  ;; thread terminated
-        )
-        ;; on $fork, proc and cont on stack
-        (call $enqueue)                          ;; continuation of old thread
-        (call $enqueue (cont.new (type $cont)))  ;; new thread
-        (br $l)
+  (elem declare func $coop-kt $coop-tk $coop-ykt $coop-ytk)
+
+  ;; * coop-kt and coop-tk don't yield on encountering a fork
+  ;;   - coop-kt runs the continuation, queuing up the new thread for later
+  ;;   - coop-tk runs the new thread first, queuing up the continuation for later
+  ;; * coop-ykt and coop-ytk do yield on encountering a fork
+  ;;   - coop-ykt runs the continuation, queuing up the new thread for later
+  ;;   - coop-ytk runs the new thread first, queuing up the continuation for later
+
+  ;; no yield on fork, continuation first
+  (func $coop-kt (param $r (ref null $cont))
+    (if (ref.is_null (local.get $r)) (then (return)))
+    (block $on_yield (result (ref $cont))
+      (block $on_fork (result (ref $proc) (ref $cont))
+        (resume (event $yield $on_yield) (event $fork $on_fork) (local.get $r))
+        (call $dequeue)
+        (return_call_ref (ref.func $coop-kt))
       )
-      ;; on $yield, cont on stack
+      ;; fork
+      (let (param (ref $proc)) (result (ref $cont)) (local $r (ref $cont))
+      (cont.new (type $cont))
       (call $enqueue)
-      (br $l)
+      (local.get $r)
+      (return_call_ref (ref.func $coop-kt)))
     )
+    ;; yield
+    (call $enqueue)
+    (call $dequeue)
+    (return_call_ref (ref.func $coop-kt))
+  )
+
+  ;; no yield on fork, new thread first
+  (func $coop-tk (param $r (ref null $cont))
+    (if (ref.is_null (local.get $r)) (then (return)))
+    (block $on_yield (result (ref $cont))
+      (block $on_fork (result (ref $proc) (ref $cont))
+        (resume (event $yield $on_yield) (event $fork $on_fork) (local.get $r))
+        (call $dequeue)
+        (return_call_ref (ref.func $coop-tk))
+      )
+      ;; fork
+      (call $enqueue)
+      (return_call_ref (cont.new (type $cont)) (ref.func $coop-tk))
+    )
+    ;; yield
+    (call $enqueue)
+    (call $dequeue)
+    (return_call_ref (ref.func $coop-tk))
+  )
+
+  ;; yield on fork, continuation first
+  (func $coop-ykt (param $r (ref null $cont))
+    (if (ref.is_null (local.get $r)) (then (return)))
+    (block $on_yield (result (ref $cont))
+      (block $on_fork (result (ref $proc) (ref $cont))
+        (resume (event $yield $on_yield) (event $fork $on_fork) (local.get $r))
+        (call $dequeue)
+        (return_call_ref (ref.func $coop-ykt))
+      )
+      ;; fork
+      (call $enqueue)
+      (cont.new (type $cont))
+      (call $enqueue)
+      (return_call_ref (call $dequeue) (ref.func $coop-ykt))
+    )
+    ;; yield
+    (call $enqueue)
+    (call $dequeue)
+    (return_call_ref (ref.func $coop-ykt))
+  )
+
+  ;; yield on fork, new thread first
+  (func $coop-ytk (param $r (ref null $cont))
+    (if (ref.is_null (local.get $r)) (then (return)))
+    (block $on_yield (result (ref $cont))
+      (block $on_fork (result (ref $proc) (ref $cont))
+        (resume (event $yield $on_yield) (event $fork $on_fork) (local.get $r))
+        (call $dequeue)
+        (return_call_ref (ref.func $coop-ytk))
+      )
+      ;; fork
+      (let (param (ref $proc)) (local $k (ref $cont))
+        (cont.new (type $cont))
+        (call $enqueue)
+        (call $enqueue (local.get $k))
+        (return_call_ref (call $dequeue) (ref.func $coop-ytk))
+      )
+      (unreachable)
+    )
+    ;; yield
+    (call $enqueue)
+    (call $dequeue)
+    (return_call_ref (ref.func $coop-tk))
+  )
+
+  (func $scheduler (export "scheduler") (param $main (ref $proc))
+     (call $coop-tk (cont.new (type $cont) (local.get $main)))
   )
 )
 (register "scheduler")
