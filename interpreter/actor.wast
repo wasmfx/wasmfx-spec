@@ -79,7 +79,7 @@
   (event $send (export "send") (param i32 i32))
   (event $recv (export "recv") (result i32))
 
-  (elem declare func $act-res $act-nullary $recv-againf)
+  (elem declare func $act-nullary $recv-againf)
 
   ;; Rather than having a loop in the recv clause, it would be nice if
   ;; we could implement blocking by reinvoking recv with the original
@@ -135,16 +135,16 @@
             ;;
             ;; (if (call $empty-mb (local.get $mine))
             ;;     (then (suspend $yield)
-            ;;           (return_call_ref (local.get $mine) (call $recv-again (local.get $ik)) (ref.func $act-nullary)))
+            ;;           (return_call $act-nullary (local.get $mine) (call $recv-again (local.get $ik))))
             ;; )
             (call $recv-from-mb (local.get $mine))
             (local.set $res)
-            (return_call_ref (local.get $mine) (local.get $res) (local.get $ik) (ref.func $act-res)))
+            (return_call $act-res (local.get $mine) (local.get $res) (local.get $ik)))
           (unreachable)
         ) ;; send
         (let (param i32 i32) (local $k (ref $cont))
           (call $send-to-mb)
-          (return_call_ref (local.get $mine) (local.get $k) (ref.func $act-nullary)))
+          (return_call $act-nullary (local.get $mine) (local.get $k)))
         (unreachable)
       ) ;; spawn
       (let (local $you (ref $proc)) (local $ik (ref $icont))
@@ -152,12 +152,12 @@
         (local.set $res)
         (suspend $fork (func.bind (type $proc) (local.get $res)
                                   (cont.new (type $cont) (local.get $you)) (ref.func $act-nullary)))
-        (return_call_ref (local.get $mine) (local.get $res) (local.get $ik) (ref.func $act-res))
+        (return_call $act-res (local.get $mine) (local.get $res) (local.get $ik))
       )
       (unreachable)
     ) ;; self
     (let (local $ik (ref $icont))
-      (return_call_ref (local.get $mine) (local.get $mine) (local.get $ik) (ref.func $act-res))
+      (return_call $act-res (local.get $mine) (local.get $mine) (local.get $ik))
     )
     (unreachable)
   )
@@ -188,12 +188,12 @@
             )
             (call $recv-from-mb (local.get $mine))
             (local.set $res)
-            (return_call_ref (local.get $mine) (local.get $res) (local.get $ik) (ref.func $act-res)))
+            (return_call $act-res (local.get $mine) (local.get $res) (local.get $ik)))
           (unreachable)
         ) ;; send
         (let (param i32 i32) (local $k (ref $cont))
           (call $send-to-mb)
-          (return_call_ref (local.get $mine) (local.get $k) (ref.func $act-nullary)))
+          (return_call $act-nullary (local.get $mine) (local.get $k)))
         (unreachable)
       ) ;; spawn
       (let (local $you (ref $proc)) (local $ik (ref $icont))
@@ -201,12 +201,12 @@
         (local.set $res)
         (suspend $fork (func.bind (type $proc) (local.get $res)
                                   (cont.new (type $cont) (local.get $you)) (ref.func $act-nullary)))
-        (return_call_ref (local.get $mine) (local.get $res) (local.get $ik) (ref.func $act-res))
+        (return_call $act-res (local.get $mine) (local.get $res) (local.get $ik))
       )
       (unreachable)
     ) ;; self
     (let (local $ik (ref $icont))
-      (return_call_ref (local.get $mine) (local.get $mine) (local.get $ik) (ref.func $act-res))
+      (return_call $act-res (local.get $mine) (local.get $mine) (local.get $ik))
     )
     (unreachable)
   )
@@ -279,8 +279,6 @@
     (global.set $qback (i32.add (global.get $qback) (i32.const 1)))
   )
 
-  (elem declare func $coop-kt $coop-tk $coop-ykt $coop-ytk)
-
   ;; * coop-kt and coop-tk don't yield on encountering a fork
   ;;   - coop-kt runs the continuation, queuing up the new thread for later
   ;;   - coop-tk runs the new thread first, queuing up the continuation for later
@@ -295,19 +293,16 @@
       (block $on_fork (result (ref $proc) (ref $cont))
         (resume (event $yield $on_yield) (event $fork $on_fork) (local.get $r))
         (call $dequeue)
-        (return_call_ref (ref.func $coop-kt))
+        (return_call $coop-kt)
       )
       ;; fork
-      (let (param (ref $proc)) (result (ref $cont)) (local $r (ref $cont))
-      (cont.new (type $cont))
       (call $enqueue)
-      (local.get $r)
-      (return_call_ref (ref.func $coop-kt)))
+      (return_call $coop-kt (cont.new (type $cont)))
     )
     ;; yield
     (call $enqueue)
     (call $dequeue)
-    (return_call_ref (ref.func $coop-kt))
+    (return_call $coop-kt)
   )
 
   ;; no yield on fork, new thread first
@@ -317,16 +312,19 @@
       (block $on_fork (result (ref $proc) (ref $cont))
         (resume (event $yield $on_yield) (event $fork $on_fork) (local.get $r))
         (call $dequeue)
-        (return_call_ref (ref.func $coop-tk))
+        (return_call $coop-tk)
       )
       ;; fork
+      (let (param (ref $proc)) (result (ref $cont)) (local $r (ref $cont))
+      (cont.new (type $cont))
       (call $enqueue)
-      (return_call_ref (cont.new (type $cont)) (ref.func $coop-tk))
+      (local.get $r)
+      (return_call $coop-tk))
     )
     ;; yield
     (call $enqueue)
     (call $dequeue)
-    (return_call_ref (ref.func $coop-tk))
+    (return_call $coop-tk)
   )
 
   ;; yield on fork, continuation first
@@ -336,18 +334,18 @@
       (block $on_fork (result (ref $proc) (ref $cont))
         (resume (event $yield $on_yield) (event $fork $on_fork) (local.get $r))
         (call $dequeue)
-        (return_call_ref (ref.func $coop-ykt))
+        (return_call $coop-ykt)
       )
       ;; fork
       (call $enqueue)
       (cont.new (type $cont))
       (call $enqueue)
-      (return_call_ref (call $dequeue) (ref.func $coop-ykt))
+      (return_call $coop-ykt (call $dequeue))
     )
     ;; yield
     (call $enqueue)
     (call $dequeue)
-    (return_call_ref (ref.func $coop-ykt))
+    (return_call $coop-ykt)
   )
 
   ;; yield on fork, new thread first
@@ -357,21 +355,21 @@
       (block $on_fork (result (ref $proc) (ref $cont))
         (resume (event $yield $on_yield) (event $fork $on_fork) (local.get $r))
         (call $dequeue)
-        (return_call_ref (ref.func $coop-ytk))
+        (return_call $coop-ytk)
       )
       ;; fork
       (let (param (ref $proc)) (local $k (ref $cont))
         (cont.new (type $cont))
         (call $enqueue)
         (call $enqueue (local.get $k))
-        (return_call_ref (call $dequeue) (ref.func $coop-ytk))
+        (return_call $coop-ytk (call $dequeue))
       )
       (unreachable)
     )
     ;; yield
     (call $enqueue)
     (call $dequeue)
-    (return_call_ref (ref.func $coop-ytk))
+    (return_call $coop-ytk)
   )
 
   (func $scheduler (export "scheduler") (param $main (ref $proc))
@@ -413,7 +411,7 @@
   (event $send (import "actor" "send") (param i32 i32))
   (event $recv (import "actor" "recv") (result i32))
 
-  (elem declare func $next $spawnMany)
+  (elem declare func $next)
 
   (func $log (import "spectest" "print_i32") (param i32))
 
@@ -428,9 +426,8 @@
     (if (i32.eqz (local.get $n))
       (then (suspend $send (i32.const 42) (local.get $p))
             (return))
-      (else (return_call_ref (suspend $spawn (func.bind (type $proc) (local.get $p) (ref.func $next)))
-                             (i32.sub (local.get $n) (i32.const 1))
-                             (ref.func $spawnMany)))
+      (else (return_call $spawnMany (suspend $spawn (func.bind (type $proc) (local.get $p) (ref.func $next)))
+                                    (i32.sub (local.get $n) (i32.const 1))))
 
     )
   )
