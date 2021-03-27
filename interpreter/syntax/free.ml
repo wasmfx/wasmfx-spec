@@ -70,10 +70,6 @@ let var_type = function
   | SynVar x -> types (idx' x)
   | SemVar _ -> assert false
 
-let block_type = function
-  | VarBlockType x -> var_type x
-  | ValBlockType _ -> empty
-
 let num_type = function
   | I32Type | I64Type | F32Type | F64Type -> empty
 
@@ -101,6 +97,10 @@ let def_type = function
   | FuncDefType ft -> func_type ft
   | ContDefType ct -> cont_type ct
 
+let block_type = function
+  | VarBlockType x -> var_type x
+  | ValBlockType _ -> empty
+
 let rec instr (e : instr) =
   match e.it with
   | Unreachable | Nop | Drop -> empty
@@ -120,8 +120,9 @@ let rec instr (e : instr) =
   | Br x | BrIf x | BrOnNull x -> labels (idx x)
   | BrTable (xs, x) -> list (fun x -> labels (idx x)) (x::xs)
   | Return | CallRef | ReturnCallRef -> empty
-  | Call x -> funcs (idx x)
-  | CallIndirect (x, y) -> tables (idx x) ++ types (idx y)
+  | Call x | ReturnCall x -> funcs (idx x)
+  | CallIndirect (x, y) | ReturnCallIndirect (x, y) ->
+    tables (idx x) ++ types (idx y)
   | FuncBind x | ContNew x -> types (idx x)
   | Resume xys -> list (fun (x, y) -> events (idx x) ++ labels (idx y)) xys
   | LocalGet x | LocalSet x | LocalTee x -> locals (idx x)

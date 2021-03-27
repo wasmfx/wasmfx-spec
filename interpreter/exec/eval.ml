@@ -357,6 +357,21 @@ let rec step (c : config) : config =
           ) @@ e.at
         ]
 
+      | ReturnCall x, vs ->
+        (match (step {c with code = (vs, [Plain (Call x) @@ e.at])}).code with
+        | vs', [{it = Invoke a; at}] -> vs', [ReturningInvoke (vs', a) @@ at]
+        | _ -> assert false
+        )
+
+      | ReturnCallIndirect (x, y), vs ->
+        (match
+          (step {c with code = (vs, [Plain (CallIndirect (x, y)) @@ e.at])}).code
+        with
+        | vs', [{it = Invoke a; at}] -> vs', [ReturningInvoke (vs', a) @@ at]
+        | vs', [{it = Trapping s; at}] -> vs', [Trapping s @@ at]
+        | _ -> assert false
+        )
+
       | Drop, v :: vs' ->
         vs', []
 
@@ -426,7 +441,7 @@ let rec step (c : config) : config =
           vs', [Trapping (table_error e.at Table.Bounds) @@ e.at]
         else if n = 0l then
           vs', []
-        else if d <= s then
+        else if I32.le_u d s then
           vs', List.map (Lib.Fun.flip (@@) e.at) [
             Plain (Const (I32 d @@ e.at));
             Plain (Const (I32 s @@ e.at));
@@ -526,7 +541,7 @@ let rec step (c : config) : config =
           vs', [Trapping (memory_error e.at Memory.Bounds) @@ e.at]
         else if n = 0l then
           vs', []
-        else if d <= s then
+        else if I32.le_u d s then
           vs', List.map (Lib.Fun.flip (@@) e.at) [
             Plain (Const (I32 d @@ e.at));
             Plain (Const (I32 s @@ e.at));
@@ -625,7 +640,7 @@ let rec step (c : config) : config =
 
       | _ ->
         let s1 = string_of_values (List.rev vs) in
-        let s2 = string_of_stack_type (List.map type_of_value (List.rev vs)) in
+        let s2 = string_of_result_type (List.map type_of_value (List.rev vs)) in
         Crash.error e.at
           ("missing or ill-typed operand on stack (" ^ s1 ^ " : " ^ s2 ^ ")")
       )
@@ -639,6 +654,9 @@ let rec step (c : config) : config =
     | Label (n, es0, (vs', {it = Suspending (evt, vs1, ctxt); at} :: es')), vs ->
       let ctxt' code = [], [Label (n, es0, compose (ctxt code) (vs', es')) @@ e.at] in
       vs, [Suspending (evt, vs1, ctxt') @@ at]
+
+    | Label (n, es0, (vs', {it = ReturningInvoke (vs0, f); at} :: es')), vs ->
+      vs, [ReturningInvoke (vs0, f) @@ at]
 
     | Label (n, es0, (vs', {it = Breaking (0l, vs0); at} :: es')), vs ->
       take n vs0 e.at @ vs, List.map plain es0
@@ -870,7 +888,11 @@ let add_import (m : module_) (ext : extern) (im : import) (inst : module_inst)
   let et = Types.sem_extern_type inst.types it in
   let et' = extern_type_of inst.types ext in
   if not (Match.match_extern_type [] [] et' et) then
-    Link.error im.at "incompatible import type";
+    Link.error im.at ("incompatible import type for " ^
+      "\"" ^ Utf8.encode im.it.module_name ^ "\" " ^
+      "\"" ^ Utf8.encode im.it.item_name ^ "\": " ^
+      "expected " ^ Types.string_of_extern_type et ^
+      ", got " ^ Types.string_of_extern_type et');
   match ext with
   | ExternFunc func -> {inst with funcs = func :: inst.funcs}
   | ExternTable tab -> {inst with tables = tab :: inst.tables}
