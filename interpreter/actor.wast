@@ -1,29 +1,160 @@
-;; Actors via cooperative concurrency
+;; Actors via lightweight threads
 
-;; interface to cooperative concurrency
-(module $coop
+;; actor interface
+(module $actor
+  (type $proc (func))
+  (event $self (export "self") (result i32))
+  (event $spawn (export "spawn") (param (ref $proc)) (result i32))
+  (event $send (export "send") (param i32 i32))
+  (event $recv (export "recv") (result i32))
+)
+(register "actor")
+
+;; a simple example - pass a message through a chain of processes
+(module $chain
+  (type $proc (func))
+
+  (event $self (import "actor" "self") (result i32))
+  (event $spawn (import "actor" "spawn") (param (ref $proc)) (result i32))
+  (event $send (import "actor" "send") (param i32 i32))
+  (event $recv (import "actor" "recv") (result i32))
+
+  (elem declare func $next)
+
+  (func $log (import "spectest" "print_i32") (param i32))
+
+  (func $next (param $p i32)
+    (local $s i32)
+    (local.set $s (suspend $recv))
+    (call $log (i32.const -1))
+    (suspend $send (local.get $s) (local.get $p))
+  )
+
+  (func $spawnMany (param $p i32) (param $n i32)
+    (if (i32.eqz (local.get $n))
+      (then (suspend $send (i32.const 42) (local.get $p))
+            (return))
+      (else (return_call $spawnMany (suspend $spawn (func.bind (type $proc) (local.get $p) (ref.func $next)))
+                                    (i32.sub (local.get $n) (i32.const 1))))
+
+    )
+  )
+
+  ;; send the message 42 through a chain of n processes
+  (func $chain (export "chain") (param $n i32)
+    (local $s i32)
+    (suspend $self)
+    (local.get $n)
+    (call $spawnMany)
+    (local.set $s (suspend $recv))
+    (call $log (local.get $s))
+  )
+)
+(register "chain")
+
+;; interface to lightweight threads
+(module $lwt
   (type $proc (func))
   (event $yield (export "yield"))
   (event $fork (export "fork") (param (ref $proc)))
 )
-(register "coop")
+(register "lwt")
 
-;; actors implemented using cooperative concurrency primitives
-(module $actor
+;; queue of processes
+(module $queue
   (type $proc (func))
   (type $cont (cont $proc))
 
-  (func $log (import "spectest" "print_i32") (param i32))
+  ;; Table as simple queue (keeping it simple, no ring buffer)
+  (table $queue 0 (ref null $cont))
+  (global $qdelta i32 (i32.const 10))
+  (global $qback (mut i32) (i32.const 0))
+  (global $qfront (mut i32) (i32.const 0))
 
-  (event $yield (import "coop" "yield"))
-  (event $fork (import "coop" "fork") (param (ref $proc)))
+  (func $queue-empty (export "queue-empty") (result i32)
+    (i32.eq (global.get $qfront) (global.get $qback))
+  )
 
-  (exception $too-many-mailboxes)
-  (exception $too-many-messages)
+  (func $dequeue (export "dequeue") (result (ref null $cont))
+    (local $i i32)
+    (if (call $queue-empty)
+      (then (return (ref.null $cont)))
+    )
+    (local.set $i (global.get $qfront))
+    (global.set $qfront (i32.add (local.get $i) (i32.const 1)))
+    (table.get $queue (local.get $i))
+  )
 
-  (type $iproc (func (param i32)))
-  (type $icont (cont $iproc))
+  (func $enqueue (export "enqueue") (param $k (ref $cont))
+    ;; Check if queue is full
+    (if (i32.eq (global.get $qback) (table.size $queue))
+      (then
+        ;; Check if there is enough space in the front to compact
+        (if (i32.lt_u (global.get $qfront) (global.get $qdelta))
+          (then
+            ;; Space is below threshold, grow table instead
+            (drop (table.grow $queue (ref.null $cont) (global.get $qdelta)))
+          )
+          (else
+            ;; Enough space, move entries up to head of table
+            (global.set $qback (i32.sub (global.get $qback) (global.get $qfront)))
+            (table.copy $queue $queue
+              (i32.const 0)         ;; dest = new front = 0
+              (global.get $qfront)  ;; src = old front
+              (global.get $qback)   ;; len = new back = old back - old front
+            )
+            (table.fill $queue      ;; null out old entries to avoid leaks
+              (global.get $qback)   ;; start = new back
+              (ref.null $cont)      ;; init value
+              (global.get $qfront)  ;; len = old front = old front - new front
+            )
+            (global.set $qfront (i32.const 0))
+          )
+        )
+      )
+    )
+    (table.set $queue (global.get $qback) (local.get $k))
+    (global.set $qback (i32.add (global.get $qback) (i32.const 1)))
+  )
+)
+(register "queue")
 
+;; simple scheduler
+(module $scheduler
+  (type $proc (func))
+  (type $cont (cont $proc))
+
+  (event $yield (import "lwt" "yield"))
+  (event $fork (import "lwt" "fork") (param (ref $proc)))
+
+  (func $queue-empty (import "queue" "queue-empty") (result i32))
+  (func $dequeue (import "queue" "dequeue") (result (ref null $cont)))
+  (func $enqueue (import "queue" "enqueue") (param $k (ref $cont)))
+
+  (func $scheduler (export "scheduler") (param $main (ref $proc))
+    (call $enqueue (cont.new (type $cont) (local.get $main)))
+    (loop $l
+      (if (call $queue-empty) (then (return)))
+      (block $on_yield (result (ref $cont))
+        (block $on_fork (result (ref $proc) (ref $cont))
+          (resume (event $yield $on_yield) (event $fork $on_fork)
+            (call $dequeue)
+          )
+          (br $l)  ;; thread terminated
+        ) ;;   $on_fork (result (ref $proc) (ref $cont))
+        (call $enqueue)                         ;; continuation of current thread
+        (call $enqueue (cont.new (type $cont))) ;; new thread
+        (br $l)
+      )
+      ;;     $on_yield (result (ref $cont))
+      (call $enqueue) ;; continuation of current thread
+      (br $l)
+    )
+  )
+)
+(register "scheduler")
+
+(module $mailboxes
   ;; Stupid implementation of mailboxes that raises an exception if
   ;; there are too many mailboxes or if more than one messages is sent
   ;; to any given mailbox.
@@ -32,21 +163,28 @@
 
   ;; -1 means empty
 
-  (memory 10000)
+  (exception $too-many-mailboxes)
+  (exception $too-many-messages)
+
+  (memory 1)
 
   (global $msize (mut i32) (i32.const 0))
+  (global $mmax i32 (i32.const 1024)) ;; maximum number of mailboxes
 
-  (func $empty-mb (param $mb i32) (result i32)
+  (func $init (export "init")
+     (memory.fill (i32.const 0) (i32.const -1) (i32.mul (global.get $mmax) (i32.const 4)))
+  )
+
+  (func $empty-mb (export "empty-mb") (param $mb i32) (result i32)
     (local $offset i32)
     (local.set $offset (i32.mul (local.get $mb) (i32.const 4)))
     (i32.eq (i32.load (local.get $offset)) (i32.const -1))
   )
 
-  (func $new-mb (result i32)
+  (func $new-mb (export "new-mb") (result i32)
      (local $mb i32)
 
-     (if (i32.ge_u (i32.mul (global.get $msize) (i32.const 4))
-                   (i32.sub (i32.const 10000) (i32.const 4)))
+     (if (i32.ge_u (global.get $msize) (global.get $mmax))
          (then (throw $too-many-mailboxes))
      )
 
@@ -55,7 +193,7 @@
      (return (local.get $mb))
   )
 
-  (func $send-to-mb (param $v i32) (param $mb i32)
+  (func $send-to-mb (export "send-to-mb") (param $v i32) (param $mb i32)
     (local $offset i32)
     (local.set $offset (i32.mul (local.get $mb) (i32.const 4)))
     (if (call $empty-mb (local.get $mb))
@@ -64,7 +202,7 @@
     )
   )
 
-  (func $recv-from-mb (param $mb i32) (result i32)
+  (func $recv-from-mb (export "recv-from-mb") (param $mb i32) (result i32)
     (local $v i32)
     (local $offset i32)
     (local.set $offset (i32.mul (local.get $mb) (i32.const 4)))
@@ -72,12 +210,32 @@
     (i32.store (local.get $offset) (i32.const -1))
     (local.get $v)
   )
+)
+(register "mailboxes")
 
-  ;; actor interface
-  (event $self (export "self") (result i32))
-  (event $spawn (export "spawn") (param (ref $proc)) (result i32))
-  (event $send (export "send") (param i32 i32))
-  (event $recv (export "recv") (result i32))
+;; actors implemented using cooperative concurrency primitives
+(module $actor-as-lwt
+  (type $proc (func))
+  (type $cont (cont $proc))
+
+  (func $log (import "spectest" "print_i32") (param i32))
+
+  (event $yield (import "lwt" "yield"))
+  (event $fork (import "lwt" "fork") (param (ref $proc)))
+
+  (type $iproc (func (param i32)))
+  (type $icont (cont $iproc))
+
+  (func $init (import "mailboxes" "init"))
+  (func $empty-mb (import "mailboxes" "empty-mb") (param $mb i32) (result i32))
+  (func $new-mb (import "mailboxes" "new-mb") (result i32))
+  (func $send-to-mb (import "mailboxes" "send-to-mb") (param $v i32) (param $mb i32))
+  (func $recv-from-mb (import "mailboxes" "recv-from-mb") (param $mb i32) (result i32))
+
+  (event $self (import "actor" "self") (result i32))
+  (event $spawn (import "actor" "spawn") (param (ref $proc)) (result i32))
+  (event $send (import "actor" "send") (param i32 i32))
+  (event $recv (import "actor" "recv") (result i32))
 
   (elem declare func $act-nullary $recv-againf)
 
@@ -123,8 +281,9 @@
                      (local.get $res) (local.get $ik)
              )
              (return)
-          ) ;; recv
+          ) ;;   $on_recv (result (ref $icont))
           (let (local $ik (ref $icont))
+            ;; block this thread until the mailbox is non-empty
             (loop $l
               (if (call $empty-mb (local.get $mine))
                   (then (suspend $yield)
@@ -141,12 +300,12 @@
             (local.set $res)
             (return_call $act-res (local.get $mine) (local.get $res) (local.get $ik)))
           (unreachable)
-        ) ;; send
+        ) ;;   $on_send (result i32 i32 (ref $cont))
         (let (param i32 i32) (local $k (ref $cont))
           (call $send-to-mb)
           (return_call $act-nullary (local.get $mine) (local.get $k)))
         (unreachable)
-      ) ;; spawn
+      ) ;;   $on_spawn (result (ref $proc) (ref $icont))
       (let (local $you (ref $proc)) (local $ik (ref $icont))
         (call $new-mb)
         (local.set $res)
@@ -155,7 +314,7 @@
         (return_call $act-res (local.get $mine) (local.get $res) (local.get $ik))
       )
       (unreachable)
-    ) ;; self
+    ) ;;   $on_self (result (ref $icont))
     (let (local $ik (ref $icont))
       (return_call $act-res (local.get $mine) (local.get $mine) (local.get $ik))
     )
@@ -178,8 +337,9 @@
                      (local.get $k)
              )
              (return)
-          ) ;; recv
+          ) ;;   $on_recv (result (ref $icont))
           (let (local $ik (ref $icont))
+            ;; block this thread until the mailbox is non-empty
             (loop $l
               (if (call $empty-mb (local.get $mine))
                   (then (suspend $yield)
@@ -190,12 +350,12 @@
             (local.set $res)
             (return_call $act-res (local.get $mine) (local.get $res) (local.get $ik)))
           (unreachable)
-        ) ;; send
+        ) ;;   $on_send (result i32 i32 (ref $cont))
         (let (param i32 i32) (local $k (ref $cont))
           (call $send-to-mb)
           (return_call $act-nullary (local.get $mine) (local.get $k)))
         (unreachable)
-      ) ;; spawn
+      ) ;;   $on_spawn (result (ref $proc) (ref $icont))
       (let (local $you (ref $proc)) (local $ik (ref $icont))
         (call $new-mb)
         (local.set $res)
@@ -204,7 +364,7 @@
         (return_call $act-res (local.get $mine) (local.get $res) (local.get $ik))
       )
       (unreachable)
-    ) ;; self
+    ) ;;   $on_self (result (ref $icont))
     (let (local $ik (ref $icont))
       (return_call $act-res (local.get $mine) (local.get $mine) (local.get $ik))
     )
@@ -212,171 +372,11 @@
   )
 
   (func $act (export "act") (param $f (ref $proc))
-    (memory.fill (i32.const 0) (i32.const -1) (i32.const 10000))
+    (call $init)
     (call $act-nullary (call $new-mb) (cont.new (type $cont) (local.get $f)))
   )
 )
-(register "actor")
-
-
-;; a simple scheduler
-(module $scheduler
-  (type $proc (func))
-  (type $cont (cont $proc))
-
-  (event $yield (import "coop" "yield"))
-  (event $fork (import "coop" "fork") (param (ref $proc)))
-
-  ;; Table as simple queue (keeping it simple, no ring buffer)
-  (table $queue 0 (ref null $cont))
-  (global $qdelta i32 (i32.const 10))
-  (global $qback (mut i32) (i32.const 0))
-  (global $qfront (mut i32) (i32.const 0))
-
-  (func $queue-empty (result i32)
-    (i32.eq (global.get $qfront) (global.get $qback))
-  )
-
-  (func $dequeue (result (ref null $cont))
-    (local $i i32)
-    (if (call $queue-empty)
-      (then (return (ref.null $cont)))
-    )
-    (local.set $i (global.get $qfront))
-    (global.set $qfront (i32.add (local.get $i) (i32.const 1)))
-    (table.get $queue (local.get $i))
-  )
-
-  (func $enqueue (param $k (ref $cont))
-    ;; Check if queue is full
-    (if (i32.eq (global.get $qback) (table.size $queue))
-      (then
-        ;; Check if there is enough space in the front to compact
-        (if (i32.lt_u (global.get $qfront) (global.get $qdelta))
-          (then
-            ;; Space is below threshold, grow table instead
-            (drop (table.grow $queue (ref.null $cont) (global.get $qdelta)))
-          )
-          (else
-            ;; Enough space, move entries up to head of table
-            (global.set $qback (i32.sub (global.get $qback) (global.get $qfront)))
-            (table.copy $queue $queue
-              (i32.const 0)         ;; dest = new front = 0
-              (global.get $qfront)  ;; src = old front
-              (global.get $qback)   ;; len = new back = old back - old front
-            )
-            (table.fill $queue      ;; null out old entries to avoid leaks
-              (global.get $qback)   ;; start = new back
-              (ref.null $cont)      ;; init value
-              (global.get $qfront)  ;; len = old front = old front - new front
-            )
-            (global.set $qfront (i32.const 0))
-          )
-        )
-      )
-    )
-    (table.set $queue (global.get $qback) (local.get $k))
-    (global.set $qback (i32.add (global.get $qback) (i32.const 1)))
-  )
-
-  ;; * coop-kt and coop-tk don't yield on encountering a fork
-  ;;   - coop-kt runs the continuation, queuing up the new thread for later
-  ;;   - coop-tk runs the new thread first, queuing up the continuation for later
-  ;; * coop-ykt and coop-ytk do yield on encountering a fork
-  ;;   - coop-ykt runs the continuation, queuing up the new thread for later
-  ;;   - coop-ytk runs the new thread first, queuing up the continuation for later
-
-  ;; no yield on fork, continuation first
-  (func $coop-kt (param $r (ref null $cont))
-    (if (ref.is_null (local.get $r)) (then (return)))
-    (block $on_yield (result (ref $cont))
-      (block $on_fork (result (ref $proc) (ref $cont))
-        (resume (event $yield $on_yield) (event $fork $on_fork) (local.get $r))
-        (call $dequeue)
-        (return_call $coop-kt)
-      )
-      ;; fork
-      (call $enqueue)
-      (return_call $coop-kt (cont.new (type $cont)))
-    )
-    ;; yield
-    (call $enqueue)
-    (call $dequeue)
-    (return_call $coop-kt)
-  )
-
-  ;; no yield on fork, new thread first
-  (func $coop-tk (param $r (ref null $cont))
-    (if (ref.is_null (local.get $r)) (then (return)))
-    (block $on_yield (result (ref $cont))
-      (block $on_fork (result (ref $proc) (ref $cont))
-        (resume (event $yield $on_yield) (event $fork $on_fork) (local.get $r))
-        (call $dequeue)
-        (return_call $coop-tk)
-      )
-      ;; fork
-      (let (param (ref $proc)) (result (ref $cont)) (local $r (ref $cont))
-      (cont.new (type $cont))
-      (call $enqueue)
-      (local.get $r)
-      (return_call $coop-tk))
-    )
-    ;; yield
-    (call $enqueue)
-    (call $dequeue)
-    (return_call $coop-tk)
-  )
-
-  ;; yield on fork, continuation first
-  (func $coop-ykt (param $r (ref null $cont))
-    (if (ref.is_null (local.get $r)) (then (return)))
-    (block $on_yield (result (ref $cont))
-      (block $on_fork (result (ref $proc) (ref $cont))
-        (resume (event $yield $on_yield) (event $fork $on_fork) (local.get $r))
-        (call $dequeue)
-        (return_call $coop-ykt)
-      )
-      ;; fork
-      (call $enqueue)
-      (cont.new (type $cont))
-      (call $enqueue)
-      (return_call $coop-ykt (call $dequeue))
-    )
-    ;; yield
-    (call $enqueue)
-    (call $dequeue)
-    (return_call $coop-ykt)
-  )
-
-  ;; yield on fork, new thread first
-  (func $coop-ytk (param $r (ref null $cont))
-    (if (ref.is_null (local.get $r)) (then (return)))
-    (block $on_yield (result (ref $cont))
-      (block $on_fork (result (ref $proc) (ref $cont))
-        (resume (event $yield $on_yield) (event $fork $on_fork) (local.get $r))
-        (call $dequeue)
-        (return_call $coop-ytk)
-      )
-      ;; fork
-      (let (param (ref $proc)) (local $k (ref $cont))
-        (cont.new (type $cont))
-        (call $enqueue)
-        (call $enqueue (local.get $k))
-        (return_call $coop-ytk (call $dequeue))
-      )
-      (unreachable)
-    )
-    ;; yield
-    (call $enqueue)
-    (call $dequeue)
-    (return_call $coop-ytk)
-  )
-
-  (func $scheduler (export "scheduler") (param $main (ref $proc))
-     (call $coop-tk (cont.new (type $cont) (local.get $main)))
-  )
-)
-(register "scheduler")
+(register "actor-as-lwt")
 
 ;; composing the actor and scheduler handlers together
 (module $actor-scheduler
@@ -385,7 +385,7 @@
 
   (elem declare func $act $scheduler $comp)
 
-  (func $act (import "actor" "act") (param $f (ref $proc)))
+  (func $act (import "actor-as-lwt" "act") (param $f (ref $proc)))
   (func $scheduler (import "scheduler" "scheduler") (param $main (ref $proc)))
 
   (func $comp (param $h (ref $procproc)) (param $g (ref $procproc)) (param $f (ref $proc))
@@ -401,48 +401,6 @@
   )
 )
 (register "actor-scheduler")
-
-;; a simple example - pass a message through a chain of processes
-(module $chain
-  (type $proc (func))
-
-  (event $self (import "actor" "self") (result i32))
-  (event $spawn (import "actor" "spawn") (param (ref $proc)) (result i32))
-  (event $send (import "actor" "send") (param i32 i32))
-  (event $recv (import "actor" "recv") (result i32))
-
-  (elem declare func $next)
-
-  (func $log (import "spectest" "print_i32") (param i32))
-
-  (func $next (param $p i32)
-    (local $s i32)
-    (local.set $s (suspend $recv))
-    (call $log (i32.const -1))
-    (suspend $send (local.get $s) (local.get $p))
-  )
-
-  (func $spawnMany (param $p i32) (param $n i32)
-    (if (i32.eqz (local.get $n))
-      (then (suspend $send (i32.const 42) (local.get $p))
-            (return))
-      (else (return_call $spawnMany (suspend $spawn (func.bind (type $proc) (local.get $p) (ref.func $next)))
-                                    (i32.sub (local.get $n) (i32.const 1))))
-
-    )
-  )
-
-  ;; send the message 42 through a chain of n processes
-  (func $chain (export "chain") (param $n i32)
-    (local $s i32)
-    (suspend $self)
-    (local.get $n)
-    (call $spawnMany)
-    (local.set $s (suspend $recv))
-    (call $log (local.get $s))
-  )
-)
-(register "chain")
 
 (module
   (type $proc (func))

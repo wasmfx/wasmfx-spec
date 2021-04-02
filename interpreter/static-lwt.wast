@@ -1,13 +1,13 @@
 ;; static lightweight threads
 
-;; interface to (static) cooperative concurrency
-(module $coop
+;; interface to a fixed collection of lightweight threads
+(module $lwt
   (event $yield (export "yield"))
 )
-(register "coop")
+(register "lwt")
 
-(module $threads
-  (event $yield (import "coop" "yield"))
+(module $example
+  (event $yield (import "lwt" "yield"))
   (func $log (import "spectest" "print_i32") (param i32))
 
   (func $thread1 (export "thread1")
@@ -34,13 +34,11 @@
     (call $log (i32.const 32))
   )
 )
-(register "threads")
+(register "example")
 
-(module $scheduler
+(module $queue
   (type $proc (func))
   (type $cont (cont $proc))
-
-  (event $yield (import "coop" "yield"))
 
   ;; Table as simple queue (keeping it simple, no ring buffer)
   (table $queue 0 (ref null $cont))
@@ -48,11 +46,11 @@
   (global $qback (mut i32) (i32.const 0))
   (global $qfront (mut i32) (i32.const 0))
 
-  (func $queue-empty (result i32)
+  (func $queue-empty (export "queue-empty") (result i32)
     (i32.eq (global.get $qfront) (global.get $qback))
   )
 
-  (func $dequeue (result (ref null $cont))
+  (func $dequeue (export "dequeue") (result (ref null $cont))
     (local $i i32)
     (if (call $queue-empty)
       (then (return (ref.null $cont)))
@@ -93,6 +91,19 @@
     (table.set $queue (global.get $qback) (local.get $k))
     (global.set $qback (i32.add (global.get $qback) (i32.const 1)))
   )
+)
+(register "queue")
+
+(module $scheduler
+  (type $proc (func))
+  (type $cont (cont $proc))
+
+  (event $yield (import "lwt" "yield"))
+
+  ;; queue interface
+  (func $queue-empty (import "queue" "queue-empty") (result i32))
+  (func $dequeue (import "queue" "dequeue") (result (ref null $cont)))
+  (func $enqueue (import "queue" "enqueue") (param $k (ref $cont)))
 
   (func $scheduler (export "scheduler")
     (loop $l
@@ -115,13 +126,13 @@
   (type $cont (cont $proc))
 
   (func $scheduler (import "scheduler" "scheduler"))
-  (func $enqueue (import "scheduler" "enqueue") (param (ref $cont)))
+  (func $enqueue (import "queue" "enqueue") (param (ref $cont)))
 
   (func $log (import "spectest" "print_i32") (param i32))
 
-  (func $thread1 (import "threads" "thread1"))
-  (func $thread2 (import "threads" "thread2"))
-  (func $thread3 (import "threads" "thread3"))
+  (func $thread1 (import "example" "thread1"))
+  (func $thread2 (import "example" "thread2"))
+  (func $thread3 (import "example" "thread3"))
 
   (elem declare func $thread1 $thread2 $thread3)
 

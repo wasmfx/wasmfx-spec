@@ -1,18 +1,18 @@
 ;; dynamic lightweight threads
 
-;; interface to cooperative concurrency
-(module $coop
+;; interface to lightweight threads
+(module $lwt
   (type $proc (func))
   (event $yield (export "yield"))
-  (event $spawn (export "spawn") (param (ref $proc)))
+  (event $fork (export "fork") (param (ref $proc)))
 )
-(register "coop")
+(register "lwt")
 
-(module $threads
+(module $example
   (type $proc (func))
   (type $cont (cont $proc))
-  (event $yield (import "coop" "yield"))
-  (event $spawn (import "coop" "spawn") (param (ref $proc)))
+  (event $yield (import "lwt" "yield"))
+  (event $fork (import "lwt" "fork") (param (ref $proc)))
 
   (func $log (import "spectest" "print_i32") (param i32))
 
@@ -20,11 +20,11 @@
 
   (func $main (export "main")
     (call $log (i32.const 0))
-    (suspend $spawn (ref.func $thread1))
+    (suspend $fork (ref.func $thread1))
     (call $log (i32.const 1))
-    (suspend $spawn (ref.func $thread2))
+    (suspend $fork (ref.func $thread2))
     (call $log (i32.const 2))
-    (suspend $spawn (ref.func $thread3))
+    (suspend $fork (ref.func $thread3))
     (call $log (i32.const 3))
   )
 
@@ -52,14 +52,11 @@
     (call $log (i32.const 32))
   )
 )
-(register "threads")
+(register "example")
 
-(module $scheduler
+(module $queue
   (type $proc (func))
   (type $cont (cont $proc))
-
-  (event $yield (import "coop" "yield"))
-  (event $spawn (import "coop" "spawn") (param (ref $proc)))
 
   ;; Table as simple queue (keeping it simple, no ring buffer)
   (table $queue 0 (ref null $cont))
@@ -67,11 +64,11 @@
   (global $qback (mut i32) (i32.const 0))
   (global $qfront (mut i32) (i32.const 0))
 
-  (func $queue-empty (result i32)
+  (func $queue-empty (export "queue-empty") (result i32)
     (i32.eq (global.get $qfront) (global.get $qback))
   )
 
-  (func $dequeue (result (ref null $cont))
+  (func $dequeue (export "dequeue") (result (ref null $cont))
     (local $i i32)
     (if (call $queue-empty)
       (then (return (ref.null $cont)))
@@ -81,7 +78,7 @@
     (table.get $queue (local.get $i))
   )
 
-  (func $enqueue (param $k (ref $cont))
+  (func $enqueue (export "enqueue") (param $k (ref $cont))
     ;; Check if queue is full
     (if (i32.eq (global.get $qback) (table.size $queue))
       (then
@@ -112,18 +109,31 @@
     (table.set $queue (global.get $qback) (local.get $k))
     (global.set $qback (i32.add (global.get $qback) (i32.const 1)))
   )
+)
+(register "queue")
+
+(module $scheduler
+  (type $proc (func))
+  (type $cont (cont $proc))
+
+  (event $yield (import "lwt" "yield"))
+  (event $fork (import "lwt" "fork") (param (ref $proc)))
+
+  (func $queue-empty (import "queue" "queue-empty") (result i32))
+  (func $dequeue (import "queue" "dequeue") (result (ref null $cont)))
+  (func $enqueue (import "queue" "enqueue") (param $k (ref $cont)))
 
   (func $scheduler (export "scheduler") (param $main (ref $proc))
     (call $enqueue (cont.new (type $cont) (local.get $main)))
     (loop $l
       (if (call $queue-empty) (then (return)))
       (block $on_yield (result (ref $cont))
-        (block $on_spawn (result (ref $proc) (ref $cont))
-          (resume (event $yield $on_yield) (event $spawn $on_spawn)
+        (block $on_fork (result (ref $proc) (ref $cont))
+          (resume (event $yield $on_yield) (event $fork $on_fork)
             (call $dequeue)
           )
           (br $l)  ;; thread terminated
-        ) ;;   $on_spawn (result (ref $proc) (ref $cont))
+        ) ;;   $on_fork (result (ref $proc) (ref $cont))
         (call $enqueue)                         ;; continuation of current thread
         (call $enqueue (cont.new (type $cont))) ;; new thread
         (br $l)
@@ -134,7 +144,6 @@
     )
   )
 )
-
 (register "scheduler")
 
 (module
@@ -143,7 +152,7 @@
 
   (func $log (import "spectest" "print_i32") (param i32))
 
-  (func $main (import "threads" "main"))
+  (func $main (import "example" "main"))
 
   (elem declare func $main)
 

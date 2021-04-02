@@ -16,11 +16,9 @@
             (local.get $s) (local.get $k)
           )
           (return)
-        )
-        ;; on set
+        ) ;;  $on_set (result i32 (ref $sk))
         (return_call $setting)
-      )
-      ;; on get
+      ) ;;  $on_get (result (ref $gk))
       (local.get $s)
       (return_call $getting)
   )
@@ -32,11 +30,9 @@
             (local.get $k)
           )
           (return)
-        )
-        ;; on set
+        ) ;;  $on_set (result i32 (ref $sk))
         (return_call $setting)
-      )
-      ;; on get
+      ) ;;  $on_get (result (ref $gk))
       (local.get $s)
       (return_call $getting)
   )
