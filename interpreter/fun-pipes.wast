@@ -32,7 +32,6 @@
      (call $piper (i32.const -1) (cont.new (type $pcont) (local.get $p)) (cont.new (type $ccont) (local.get $c)))
   )
 )
-
 (register "pipes")
 
 (module
