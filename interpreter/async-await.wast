@@ -55,7 +55,7 @@
   ;; compute p = 1+..+3; q = 5+..+7; r = 10+...+15 asynchronously
   ;; once p and q have finished computing, compute x = p*q
   ;; once r has finished computing, return x+r
-  (func $main (export "main")
+  (func $run (export "run")
      (local $p i32)
      (local $q i32)
      (local $r i32)
@@ -85,7 +85,7 @@
 )
 (register "example")
 
-;; queue of processes
+;; queue of threads
 (module $queue
   (type $proc (func))
   (type $cont (cont $proc))
@@ -152,14 +152,14 @@
   (type $ifun (func (param i32)))
   (type $icont (cont $ifun))
 
-  (elem declare func $apply-icontf)
+  (elem declare func $applyf)
 
   ;; partially apply an icont to an integer argument
-  (func $apply-icontf (param $v i32) (param $k (ref null $icont))
+  (func $applyf (param $v i32) (param $k (ref null $icont))
      (resume (local.get $v) (local.get $k))
   )
-  (func $apply-icont (export "apply-icont") (param $v i32) (param $k (ref null $icont)) (result (ref $cont))
-     (cont.new (type $cont) (func.bind (type $proc) (local.get $v) (local.get $k) (ref.func $apply-icontf)))
+  (func $apply (export "apply") (param $v i32) (param $k (ref null $icont)) (result (ref $cont))
+     (cont.new (type $cont) (func.bind (type $proc) (local.get $v) (local.get $k) (ref.func $applyf)))
   )
 )
 (register "icont")
@@ -173,7 +173,7 @@
   (type $icont (cont $ifun))
 
   ;; icont interface
-  (func $apply-icont (import "icont" "apply-icont") (param $v i32) (param $k (ref null $icont)) (result (ref $cont)))
+  (func $apply-icont (import "icont" "apply") (param $v i32) (param $k (ref null $icont)) (result (ref $cont)))
 
   ;; a simplistic implementation of promises that assumes a maximum of
   ;; 1000 promises and a maximum of one observer per promise
@@ -232,7 +232,7 @@
     (if (ref.is_null (local.get $k))
       (then (return (ref.null $cont)))
     )
-    (call $apply-icont (local.get $v) (local.get $k))
+    (return (call $apply-icont (local.get $v) (local.get $k)))
   )
 )
 (register "promise")
@@ -251,7 +251,7 @@
   (event $await (import "async-await" "await") (param i32) (result i32))
 
   ;; icont interface
-  (func $apply-icont (import "icont" "apply-icont") (param $v i32) (param $k (ref null $icont)) (result (ref $cont)))
+  (func $apply-icont (import "icont" "apply") (param $v i32) (param $k (ref null $icont)) (result (ref $cont)))
 
   ;; queue interface
   (func $queue-empty (import "queue" "queue-empty") (result i32))
@@ -329,12 +329,12 @@
 
   (func $log (import "spectest" "print_i32") (param i32))
 
-  (func $main (import "example" "main"))
+  (func $run-example (import "example" "run"))
 
-  (elem declare func $main)
+  (elem declare func $run-example)
 
   (func (export "run")
-    (call $scheduler (cont.new (type $cont) (ref.func $main)))
+    (call $scheduler (cont.new (type $cont) (ref.func $run-example)))
   )
 )
 

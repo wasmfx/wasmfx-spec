@@ -36,6 +36,7 @@
 )
 (register "example")
 
+;; queue of threads
 (module $queue
   (type $proc (func))
   (type $cont (cont $proc))
@@ -147,4 +148,4 @@
   )
 )
 
-(assert_return (invoke "run"))
+(invoke "run")

@@ -138,14 +138,16 @@
       (block $on_fork (result (ref $proc) (ref $cont))
         (resume (event $yield $on_yield) (event $fork $on_fork) (local.get $r))
         (call $dequeue)
-        (return_call $lwt-kt)
+        (return_call $lwt-tk)
       ) ;;   $on_fork (result (ref $proc) (ref $cont))
+      (let (param (ref $proc)) (result (ref $cont)) (local $r (ref $cont))
+      (cont.new (type $cont))
       (call $enqueue)
-      (return_call $lwt-kt (cont.new (type $cont)))
+      (return_call $lwt-tk (local.get $r)))
     ) ;;   $on_yield (result (ref $cont))
     (call $enqueue)
     (call $dequeue)
-    (return_call $lwt-kt)
+    (return_call $lwt-tk)
   )
 
   ;; no yield on fork, new thread first
@@ -155,17 +157,14 @@
       (block $on_fork (result (ref $proc) (ref $cont))
         (resume (event $yield $on_yield) (event $fork $on_fork) (local.get $r))
         (call $dequeue)
-        (return_call $lwt-tk)
+        (return_call $lwt-kt)
       ) ;;   $on_fork (result (ref $proc) (ref $cont))
-      (let (param (ref $proc)) (result (ref $cont)) (local $r (ref $cont))
-      (cont.new (type $cont))
       (call $enqueue)
-      (local.get $r)
-      (return_call $lwt-tk))
+      (return_call $lwt-kt (cont.new (type $cont)))
     ) ;;   $on_yield (result (ref $cont))
     (call $enqueue)
     (call $dequeue)
-    (return_call $lwt-tk)
+    (return_call $lwt-kt)
   )
 
   ;; yield on fork, continuation first
@@ -253,4 +252,5 @@
   )
 )
 
-(assert_return (invoke "run"))
+(invoke "run")
+

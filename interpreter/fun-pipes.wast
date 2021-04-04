@@ -80,4 +80,4 @@
  )
 )
 
-(assert_return (invoke "run" (i32.const 0)))
+(invoke "run" (i32.const 0))
