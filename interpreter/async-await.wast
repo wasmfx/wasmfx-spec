@@ -245,6 +245,7 @@
   (type $ifun (func (param i32)))
   (type $icont (cont $ifun))
 
+  ;; async-await interface
   (event $yield (import "async-await" "yield"))
   (event $fulfill (import "async-await" "fulfill") (param i32) (param i32))
   (event $async (import "async-await" "async") (param (ref $ifun)) (result i32))
@@ -313,8 +314,8 @@
         )
         (br $l)
       ) ;;   $on_yield (result (ref $cont))
-      (call $enqueue) ;; continuation of current thread
-      (local.set $nextk (call $dequeue))
+      (call $enqueue)                    ;; current thread
+      (local.set $nextk (call $dequeue)) ;; next thread
       (br $l)
     )
   )
