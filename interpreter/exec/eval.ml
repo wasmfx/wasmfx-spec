@@ -78,7 +78,10 @@ and admin_instr' =
 and ctxt = code -> code
 
 type cont = int * ctxt  (* TODO: represent type properly *)
-type ref_ += ContRef of cont option ref
+type cont_status = Alive of cont
+                 | Taken
+                 | Destroyed
+type ref_ += ContRef of cont_status ref
 
 let () =
   let type_of_ref' = !Value.type_of_ref' in
@@ -314,7 +317,7 @@ let rec step (c : config) : config =
       | ContNew x, Ref (FuncRef f) :: vs ->
         let FuncType (ts, _) = Func.type_of f in
         let ctxt code = compose code ([], [Invoke f @@ e.at]) in
-        Ref (ContRef (ref (Some (List.length ts, ctxt)))) :: vs, []
+        Ref (ContRef (ref (Alive (List.length ts, ctxt)))) :: vs, []
 
       | Suspend x, vs ->
         let evt = event c.frame.inst x in
@@ -325,28 +328,34 @@ let rec step (c : config) : config =
       | Resume xls, Ref (NullRef _) :: vs ->
         vs, [Trapping "null continuation reference" @@ e.at]
 
-      | Resume xls, Ref (ContRef {contents = None}) :: vs ->
-        vs, [Trapping "continuation resumed twice" @@ e.at]
+      | Resume xls, Ref (ContRef {contents = Taken}) :: vs ->
+         vs, [Trapping "continuation resumed twice" @@ e.at]
 
-      | Resume xls, Ref (ContRef ({contents = Some (n, ctxt)} as cont)) :: vs ->
+      | Resume xls, Ref (ContRef {contents = Destroyed}) :: vs ->
+        vs, [Trapping "continuation already destroyed" @@ e.at]
+
+      | Resume xls, Ref (ContRef ({contents = Alive (n, ctxt)} as cont)) :: vs ->
         let hs = List.map (fun (x, l) -> event c.frame.inst x, l) xls in
         let args, vs' = split n vs e.at in
         (if not !Flags.multishot_continuations then
-           cont := None);
+           cont := Taken);
         vs', [Handle (Some hs, ctxt (args, [])) @@ e.at]
 
       | ResumeThrow x, Ref (NullRef _) :: vs ->
         vs, [Trapping "null continuation reference" @@ e.at]
 
-      | ResumeThrow x, Ref (ContRef {contents = None}) :: vs ->
+      | ResumeThrow x, Ref (ContRef {contents = Taken}) :: vs ->
         vs, [Trapping "continuation resumed twice" @@ e.at]
 
-      | ResumeThrow x, Ref (ContRef ({contents = Some (n, ctxt)} as cont)) :: vs ->
+      | ResumeThrow x, Ref (ContRef {contents = Destroyed}) :: vs ->
+        vs, [Trapping "continuation already destroyed" @@ e.at]
+
+      | ResumeThrow x, Ref (ContRef ({contents = Alive (n, ctxt)} as cont)) :: vs ->
         let evt = event c.frame.inst x in
         let EventType (FuncType (ts, _), _) = Event.type_of evt in
         let args, vs' = split (List.length ts) vs e.at in
         let vs1', es1' = ctxt (args, [Plain (Throw x) @@ e.at]) in
-        cont := None;
+        cont := Destroyed;
         vs1' @ vs', es1'
 
       | Barrier (bt, es'), vs ->
@@ -768,7 +777,7 @@ let rec step (c : config) : config =
       when List.mem_assq evt hs ->
       let EventType (FuncType (_, ts), _) = Event.type_of evt in
       let ctxt' code = compose (ctxt code) (vs', es') in
-      [Ref (ContRef (ref (Some (List.length ts, ctxt'))))] @ vs1 @ vs,
+      [Ref (ContRef (ref (Alive (List.length ts, ctxt'))))] @ vs1 @ vs,
       [Plain (Br (List.assq evt hs)) @@ e.at]
 
     | Handle (hso, (vs', {it = Suspending (evt, vs1, ctxt); at} :: es')), vs ->
