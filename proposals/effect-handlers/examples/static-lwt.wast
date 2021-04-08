@@ -106,7 +106,7 @@
   (func $dequeue (import "queue" "dequeue") (result (ref null $cont)))
   (func $enqueue (import "queue" "enqueue") (param $k (ref $cont)))
 
-  (func $scheduler (export "scheduler")
+  (func $run (export "run")
     (loop $l
       (if (call $queue-empty) (then (return)))
       (block $on_yield (result (ref $cont))
@@ -126,7 +126,7 @@
   (type $proc (func))
   (type $cont (cont $proc))
 
-  (func $scheduler (import "scheduler" "scheduler"))
+  (func $scheduler (import "scheduler" "run"))
   (func $enqueue (import "queue" "enqueue") (param (ref $cont)))
 
   (func $log (import "spectest" "print_i32") (param i32))

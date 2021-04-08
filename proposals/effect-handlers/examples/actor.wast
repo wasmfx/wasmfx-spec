@@ -43,9 +43,7 @@
   ;; send the message 42 through a chain of n actors
   (func $chain (export "chain") (param $n i32)
     (local $s i32)
-    (suspend $self)
-    (local.get $n)
-    (call $spawnMany)
+    (call $spawnMany (suspend $self) (local.get $n))
     (local.set $s (suspend $recv))
     (call $log (local.get $s))
   )
@@ -326,8 +324,8 @@
   ;; similar to what existing actor implementations do.
 
   (func $run (export "run") (param $f (ref $proc))
-    (local $mine i32)
-    (local $nextk (ref null $cont))
+    (local $mine i32)                ;; current mailbox
+    (local $nextk (ref null $cont))  ;; next continuation
     (call $init)
     (local.set $mine (call $new-mb))
     (local.set $nextk (cont.new (type $cont) (local.get $f)))

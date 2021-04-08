@@ -10,6 +10,7 @@
 )
 (register "actor")
 
+
 ;; a simple example - pass a message through a chain of actors
 (module $chain
   (type $proc (func))
@@ -43,9 +44,7 @@
   ;; send the message 42 through a chain of n actors
   (func $chain (export "chain") (param $n i32)
     (local $s i32)
-    (suspend $self)
-    (local.get $n)
-    (call $spawnMany)
+    (call $spawnMany (suspend $self) (local.get $n))
     (local.set $s (suspend $recv))
     (call $log (local.get $s))
   )

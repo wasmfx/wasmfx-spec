@@ -6,14 +6,9 @@
   ;;
   ;; Given a suitable asynchronous I/O API, they needn't be exposed to
   ;; user code.
-
-  ;; yield : 1 -> 1
   (event $yield (export "yield"))
-  ;; fulfill : promise i32 -> i32 -> 1
   (event $fulfill (export "fulfill") (param i32) (param i32))
 
-  ;; async : (promise i32 -> 1) -> promise i32
-  ;; await : promise i32 -> i32
   (event $async (export "async") (param (ref $ifun)) (result i32))
   (event $await (export "await") (param i32) (result i32))
 )
@@ -273,7 +268,10 @@
         (block $on_fulfill (result i32 i32 (ref $cont))
           (block $on_async (result (ref $ifun) (ref $icont))
             (block $on_await (result i32 (ref $icont))
-              (resume (event $yield $on_yield) (event $fulfill $on_fulfill) (event $async $on_async) (event $await $on_await)
+              (resume (event $yield $on_yield)
+                      (event $fulfill $on_fulfill)
+                      (event $async $on_async)
+                      (event $await $on_await)
                       (local.get $nextk)
               )
               (local.set $nextk (call $dequeue))
