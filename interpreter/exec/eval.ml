@@ -331,7 +331,8 @@ let rec step (c : config) : config =
       | Resume xls, Ref (ContRef ({contents = Some (n, ctxt)} as cont)) :: vs ->
         let hs = List.map (fun (x, l) -> event c.frame.inst x, l) xls in
         let args, vs' = split n vs e.at in
-        cont := None;
+        (if not !Flags.multishot_continuations then
+           cont := None);
         vs', [Handle (Some hs, ctxt (args, [])) @@ e.at]
 
       | ResumeThrow x, Ref (NullRef _) :: vs ->
