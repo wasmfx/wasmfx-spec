@@ -139,26 +139,6 @@
 )
 (register "queue")
 
-;; partial application of int continuations
-(module $icont
-  (type $proc (func))
-  (type $cont (cont $proc))
-
-  (type $ifun (func (param i32)))
-  (type $icont (cont $ifun))
-
-  (elem declare func $applyf)
-
-  ;; partially apply an icont to an integer argument
-  (func $applyf (param $v i32) (param $k (ref null $icont))
-     (resume (local.get $v) (local.get $k))
-  )
-  (func $apply (export "apply") (param $v i32) (param $k (ref null $icont)) (result (ref $cont))
-     (cont.new (type $cont) (func.bind (type $proc) (local.get $v) (local.get $k) (ref.func $applyf)))
-  )
-)
-(register "icont")
-
 ;; promises
 (module $promise
   (type $proc (func))
@@ -166,9 +146,6 @@
 
   (type $ifun (func (param i32)))
   (type $icont (cont $ifun))
-
-  ;; icont interface
-  (func $apply-icont (import "icont" "apply") (param $v i32) (param $k (ref null $icont)) (result (ref $cont)))
 
   ;; a simplistic implementation of promises that assumes a maximum of
   ;; 1000 promises and a maximum of one observer per promise
@@ -227,7 +204,7 @@
     (if (ref.is_null (local.get $k))
       (then (return (ref.null $cont)))
     )
-    (return (call $apply-icont (local.get $v) (local.get $k)))
+    (return (cont.bind (type $cont) (local.get $v) (local.get $k)))
   )
 )
 (register "promise")
@@ -245,9 +222,6 @@
   (event $fulfill (import "async-await" "fulfill") (param i32) (param i32))
   (event $async (import "async-await" "async") (param (ref $ifun)) (result i32))
   (event $await (import "async-await" "await") (param i32) (result i32))
-
-  ;; icont interface
-  (func $apply-icont (import "icont" "apply") (param $v i32) (param $k (ref null $icont)) (result (ref $cont)))
 
   ;; queue interface
   (func $queue-empty (import "queue" "queue-empty") (result i32))
@@ -280,7 +254,7 @@
             (let (local $p i32) (local $ik (ref $icont))
               (if (call $promise-fulfilled (local.get $p))
                  ;; if promise fulfilled then run continuation partially applied to value
-                 (then (local.set $nextk (call $apply-icont (call $promise-value (local.get $p)) (local.get $ik))))
+                 (then (local.set $nextk (cont.bind (type $cont) (call $promise-value (local.get $p)) (local.get $ik))))
                  ;; else add continuation to promise and run next continuation from the queue
                  (else (call $await-promise (local.get $p) (local.get $ik))
                        (local.set $nextk (call $dequeue)))
@@ -293,9 +267,9 @@
              (call $new-promise)
              (let (local $p i32)
                 ;; enqueue continuation partially applied to promise
-                (call $enqueue (call $apply-icont (local.get $p) (local.get $ik)))
+                (call $enqueue (cont.bind (type $cont) (local.get $p) (local.get $ik)))
                 ;; run computation partially applied to promise
-                (local.set $nextk (cont.new (type $cont) (func.bind (type $proc) (local.get $p) (local.get $f))))
+                (local.set $nextk (cont.bind (type $cont) (local.get $p) (cont.new (type $icont) (local.get $f))))
              )
           )
           (br $l)
