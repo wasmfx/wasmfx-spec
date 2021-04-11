@@ -137,8 +137,8 @@
   (func $dequeue (import "queue" "dequeue") (result (ref null $cont)))
   (func $enqueue (import "queue" "enqueue") (param $k (ref $cont)))
 
-  (func $scheduler (export "scheduler") (param $main (ref $func))
-    (call $enqueue (cont.new (type $cont) (local.get $main)))
+  (func $run (export "run") (param $main (ref $cont))
+    (call $enqueue (local.get $main))
     (loop $l
       (if (call $queue-empty) (then (return)))
       (block $on_yield (result (ref $cont))
@@ -356,47 +356,48 @@
     (unreachable)
   )
 
-  (func $act (export "act") (param $f (ref $func))
+  (func $act (export "act") (param $k (ref $cont))
     (call $init)
-    (call $act-nullary (call $new-mb) (cont.new (type $cont) (local.get $f)))
+    (call $act-nullary (call $new-mb) (local.get $k))
   )
 )
 (register "actor-as-lwt")
 
 ;; composing the actor and scheduler handlers together
 (module $actor-scheduler
-  (type $proc (func))
-  (type $procproc (func (param (ref $proc))))
+  (type $func (func))
+  (type $cont (cont $func))
 
-  (elem declare func $act $scheduler $comp)
+  (type $cont-func (func (param (ref $cont))))
+  (type $cont-cont (cont $cont-func))
 
-  (func $act (import "actor-as-lwt" "act") (param $f (ref $proc)))
-  (func $scheduler (import "scheduler" "scheduler") (param $main (ref $proc)))
+  (type $f-func (func (param (ref $func))))
 
-  (func $comp (param $h (ref $procproc)) (param $g (ref $procproc)) (param $f (ref $proc))
-    (call_ref (func.bind (type $proc) (local.get $f) (local.get $g)) (local.get $h))
-  )
+  (elem declare func $act $scheduler)
 
-  (func $compose (param $h (ref $procproc)) (param $g (ref $procproc)) (result (ref $procproc))
-    (func.bind (type $procproc) (local.get $h) (local.get $g) (ref.func $comp))
-  )
+  (func $act (import "actor-as-lwt" "act") (param $k (ref $cont)))
+  (func $scheduler (import "scheduler" "run") (param $k (ref $cont)))
 
-  (func $run-actor (export "run-actor") (param $f (ref $proc))
-    (call_ref (local.get $f) (call $compose (ref.func $scheduler) (ref.func $act)))
+  (func $run-actor (export "run-actor") (param $k (ref $cont))
+    (call $scheduler (cont.bind (type $cont) (local.get $k) (cont.new (type $cont-cont) (ref.func $act))))
   )
 )
 (register "actor-scheduler")
 
 (module
-  (type $proc (func))
+  (type $func (func))
+  (type $cont (cont $func))
+
+  (type $i-func (func (param i32)))
+  (type $i-cont (cont $i-func))
 
   (elem declare func $chain)
 
-  (func $run-actor (import "actor-scheduler" "run-actor") (param $f (ref $proc)))
+  (func $run-actor (import "actor-scheduler" "run-actor") (param $k (ref $cont)))
   (func $chain (import "chain" "chain") (param $n i32))
 
   (func $run-chain (export "run-chain") (param $n i32)
-    (call $run-actor (func.bind (type $proc) (local.get $n) (ref.func $chain)))
+    (call $run-actor (cont.bind (type $cont) (local.get $n) (cont.new (type $i-cont) (ref.func $chain))))
   )
 )
 
