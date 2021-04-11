@@ -1,15 +1,15 @@
 ;; Simple pipes example (functional version)
 (module $pipes
-  (type $producer (func (result i32)))
-  (type $consumer (func (param i32) (result i32)))
-  (type $pcont (cont $producer))
-  (type $ccont (cont $consumer))
+  (type $pfun (func (result i32)))
+  (type $cfun (func (param i32) (result i32)))
+  (type $producer (cont $pfun))
+  (type $consumer (cont $cfun))
 
   (event $send (export "send") (param i32))
   (event $receive (export "receive") (result i32))
 
-  (func $piper (param $n i32) (param $p (ref $pcont)) (param $c (ref $ccont))
-     (block $on-receive (result (ref $ccont))
+  (func $piper (param $n i32) (param $p (ref $producer)) (param $c (ref $consumer))
+     (block $on-receive (result (ref $consumer))
         (resume (event $receive $on-receive) (local.get $n) (local.get $c))
         (return)
      ) ;; receive
@@ -17,9 +17,9 @@
      (return_call $copiper (local.get $c) (local.get $p))
   )
 
-  (func $copiper (param $c (ref $ccont)) (param $p (ref $pcont))
+  (func $copiper (param $c (ref $consumer)) (param $p (ref $producer))
      (local $n i32)
-     (block $on-send (result i32 (ref $pcont))
+     (block $on-send (result i32 (ref $producer))
         (resume (event $send $on-send) (local.get $p))
         (return)
      ) ;; send
@@ -29,14 +29,17 @@
   )
 
   (func $pipe (export "pipe") (param $p (ref $producer)) (param $c (ref $consumer))
-     (call $piper (i32.const -1) (cont.new (type $pcont) (local.get $p)) (cont.new (type $ccont) (local.get $c)))
+     (call $piper (i32.const -1) (local.get $p) (local.get $c))
   )
 )
 (register "pipes")
 
 (module
-  (type $producer (func (result i32)))
-  (type $consumer (func (param i32) (result i32)))
+  (type $pfun (func (result i32)))
+  (type $cfun (func (param i32) (result i32)))
+
+  (type $producer (cont $pfun))
+  (type $consumer (cont $cfun))
 
   (event $send (import "pipes" "send") (param i32))
   (event $receive (import "pipes" "receive") (result i32))
@@ -76,7 +79,9 @@
   )
 
   (func (export "run") (param $n i32)
-     (call $pipe (func.bind (type $producer) (local.get $n) (ref.func $nats)) (ref.func $sum))
+     (call $pipe (cont.bind (type $producer) (local.get $n) (cont.new (type $consumer) (ref.func $nats)))
+                 (cont.new (type $consumer) (ref.func $sum))
+     )
  )
 )
 

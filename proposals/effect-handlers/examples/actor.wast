@@ -3,8 +3,10 @@
 ;; actor interface
 (module $actor
   (type $proc (func))
+  (type $cont (cont $proc))
+
   (event $self (export "self") (result i32))
-  (event $spawn (export "spawn") (param (ref $proc)) (result i32))
+  (event $spawn (export "spawn") (param (ref $cont)) (result i32))
   (event $send (export "send") (param i32 i32))
   (event $recv (export "recv") (result i32))
 )
@@ -13,9 +15,13 @@
 ;; a simple example - pass a message through a chain of actors
 (module $chain
   (type $proc (func))
+  (type $cont (cont $proc))
+
+  (type $iproc (func (param i32)))
+  (type $icont (cont $iproc))
 
   (event $self (import "actor" "self") (result i32))
-  (event $spawn (import "actor" "spawn") (param (ref $proc)) (result i32))
+  (event $spawn (import "actor" "spawn") (param (ref $cont)) (result i32))
   (event $send (import "actor" "send") (param i32 i32))
   (event $recv (import "actor" "recv") (result i32))
 
@@ -34,7 +40,7 @@
     (if (i32.eqz (local.get $n))
       (then (suspend $send (i32.const 42) (local.get $p))
             (return))
-      (else (return_call $spawnMany (suspend $spawn (func.bind (type $proc) (local.get $p) (ref.func $next)))
+      (else (return_call $spawnMany (suspend $spawn (cont.bind (type $cont) (local.get $p) (cont.new (type $icont) (ref.func $next))))
                                     (i32.sub (local.get $n) (i32.const 1))))
 
     )
@@ -229,27 +235,6 @@
 )
 (register "mailboxes")
 
-
-;; partial application of int continuations
-(module $icont
-  (type $proc (func))
-  (type $cont (cont $proc))
-
-  (type $ifun (func (param i32)))
-  (type $icont (cont $ifun))
-
-  (elem declare func $applyf)
-
-  ;; partially apply an icont to an integer argument
-  (func $applyf (param $v i32) (param $k (ref null $icont))
-     (resume (local.get $v) (local.get $k))
-  )
-  (func $apply (export "apply") (param $v i32) (param $k (ref null $icont)) (result (ref $cont))
-     (cont.new (type $cont) (func.bind (type $proc) (local.get $v) (local.get $k) (ref.func $applyf)))
-  )
-)
-(register "icont")
-
 ;; actors implemented directly
 (module $scheduler
   (type $proc (func))
@@ -260,8 +245,9 @@
   (type $iproc (func (param i32)))
   (type $icont (cont $iproc))
 
-  ;; icont interface
-  (func $apply-icont (import "icont" "apply") (param $v i32) (param $k (ref null $icont)) (result (ref $cont)))
+  (type $icontfun (func (param (ref $icont))))
+  (type $icontcont (cont (param (ref $icont))))
+
 
   ;; mailbox interface
   (func $init (import "mailboxes" "init"))
@@ -278,7 +264,7 @@
 
   ;; actor interface
   (event $self (import "actor" "self") (result i32))
-  (event $spawn (import "actor" "spawn") (param (ref $proc)) (result i32))
+  (event $spawn (import "actor" "spawn") (param (ref $cont)) (result i32))
   (event $send (import "actor" "send") (param i32 i32))
   (event $recv (import "actor" "recv") (result i32))
 
@@ -293,9 +279,6 @@
   ;; instruction for composing or extending continuations be palatable
   ;; / desirable?
   ;;
-  ;; Partial application of continuations (as in $apply-icont) can be
-  ;; implemented with continuation composition.
-  ;;
   ;; The resume_throw operation can be implemented with continuation
   ;; composition.
 
@@ -307,7 +290,7 @@
     (resume (local.get $res) (local.get $ik))
   )
   (func $recv-again (param $ik (ref $icont)) (result (ref $cont))
-    (cont.new (type $cont) (func.bind (type $proc) (local.get $ik) (ref.func $recv-againf)))
+    (cont.bind (type $cont) (local.get $ik) (cont.new (type $icontcont) (ref.func $recv-againf)))
   )
 
   ;; There are multiple ways of avoiding the need for
@@ -323,16 +306,14 @@
   ;; directly in Wasm, but in practice this is not difficult, and
   ;; similar to what existing actor implementations do.
 
-  (func $run (export "run") (param $f (ref $proc))
+  (func $run (export "run") (param $nextk (ref null $cont))
     (local $mine i32)                ;; current mailbox
-    (local $nextk (ref null $cont))  ;; next continuation
     (call $init)
     (local.set $mine (call $new-mb))
-    (local.set $nextk (cont.new (type $cont) (local.get $f)))
     (loop $l
       (if (ref.is_null (local.get $nextk)) (then (return)))
       (block $on_self (result (ref $icont))
-        (block $on_spawn (result (ref $proc) (ref $icont))
+        (block $on_spawn (result (ref $cont) (ref $icont))
           (block $on_send (result i32 i32 (ref $cont))
             (block $on_recv (result (ref $icont))
                (resume (event $self $on_self)
@@ -354,7 +335,7 @@
                         (local.set $nextk (call $dequeue-k))
                         (br $l))
               )
-              (local.set $nextk (call $apply-icont (call $recv-from-mb (local.get $mine)) (local.get $ik)))
+              (local.set $nextk (cont.bind (type $cont) (call $recv-from-mb (local.get $mine)) (local.get $ik)))
             )
             (br $l)
           ) ;;   $on_send (result i32 i32 (ref $cont))
@@ -363,19 +344,19 @@
             (local.set $nextk (local.get $k))
           )
           (br $l)
-        ) ;;   $on_spawn (result (ref $proc) (ref $icont))
-        (let (local $you (ref $proc)) (local $ik (ref $icont))
+        ) ;;   $on_spawn (result (ref $cont) (ref $icont))
+        (let (local $you (ref $cont)) (local $ik (ref $icont))
           (call $new-mb)
           (let (local $yours i32)
             (call $enqueue-mb (local.get $yours))
-            (call $enqueue-k (cont.new (type $cont) (local.get $you)))
-            (local.set $nextk (call $apply-icont (local.get $yours) (local.get $ik)))
+            (call $enqueue-k (local.get $you))
+            (local.set $nextk (cont.bind (type $cont) (local.get $yours) (local.get $ik)))
           )
         )
         (br $l)
       ) ;;   $on_self (result (ref $icont))
       (let (local $ik (ref $icont))
-        (local.set $nextk (call $apply-icont (local.get $mine) (local.get $ik)))
+        (local.set $nextk (cont.bind (type $cont) (local.get $mine) (local.get $ik)))
       )
       (br $l)
     )
@@ -385,15 +366,21 @@
 
 (module
   (type $proc (func))
+  (type $cont (cont $proc))
+
+  (type $iproc (func (param i32)))
+  (type $icont (cont $iproc))
+
+  (func $log (import "spectest" "print_i32") (param i32))
 
   (elem declare func $chain)
 
-  (func $act (import "scheduler" "run") (param $f (ref $proc)))
+  (func $act (import "scheduler" "run") (param $k (ref null $cont)))
   (func $chain (import "chain" "chain") (param $n i32))
 
   (func $run-chain (export "run-chain") (param $n i32)
-    (call $act (func.bind (type $proc) (local.get $n) (ref.func $chain)))
+    (call $act (cont.bind (type $cont) (local.get $n) (cont.new (type $icont) (ref.func $chain))))
   )
 )
 
-(invoke "run-chain" (i32.const 64))
+(assert_return (invoke "run-chain" (i32.const 64)))

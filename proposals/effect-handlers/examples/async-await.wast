@@ -1,6 +1,7 @@
 ;; async-await interface
 (module $async-await
   (type $ifun (func (param i32)))
+  (type $icont (cont $ifun))
 
   ;; We use yield and fulfill to simulate asynchronous operations.
   ;;
@@ -9,17 +10,21 @@
   (event $yield (export "yield"))
   (event $fulfill (export "fulfill") (param i32) (param i32))
 
-  (event $async (export "async") (param (ref $ifun)) (result i32))
+  (event $async (export "async") (param (ref $icont)) (result i32))
   (event $await (export "await") (param i32) (result i32))
 )
 (register "async-await")
 
 (module $example
   (type $ifun (func (param i32)))
+  (type $icont (cont $ifun))
+
+  (type $iii-fun (func (param i32 i32 i32)))
+  (type $iii-cont (cont $iii-fun))
 
   (event $yield (import "async-await" "yield"))
   (event $fulfill (import "async-await" "fulfill") (param i32) (param i32))
-  (event $async (import "async-await" "async") (param (ref $ifun)) (result i32))
+  (event $async (import "async-await" "async") (param (ref $icont)) (result i32))
   (event $await (import "async-await" "await") (param i32) (result i32))
 
   (func $log (import "spectest" "print_i32") (param i32))
@@ -59,11 +64,11 @@
      (local $y i32)
 
      (call $log (i32.const -1))
-     (local.set $p (suspend $async (func.bind (type $ifun) (i32.const 1) (i32.const 3) (ref.func $sum))))
+     (local.set $p (suspend $async (cont.bind (type $icont) (i32.const 1) (i32.const 3) (cont.new (type $iii-cont) (ref.func $sum)))))
      (call $log (i32.const -2))
-     (local.set $q (suspend $async (func.bind (type $ifun) (i32.const 5) (i32.const 7) (ref.func $sum))))
+     (local.set $q (suspend $async (cont.bind (type $icont) (i32.const 5) (i32.const 7) (cont.new (type $iii-cont) (ref.func $sum)))))
      (call $log (i32.const -3))
-     (local.set $r (suspend $async (func.bind (type $ifun) (i32.const 10) (i32.const 15) (ref.func $sum))))
+     (local.set $r (suspend $async (cont.bind (type $icont) (i32.const 10) (i32.const 15) (cont.new (type $iii-cont) (ref.func $sum)))))
      (call $log (i32.const -4))
 
      (local.set $x (i32.mul (suspend $await (local.get $p))
@@ -220,7 +225,7 @@
   ;; async-await interface
   (event $yield (import "async-await" "yield"))
   (event $fulfill (import "async-await" "fulfill") (param i32) (param i32))
-  (event $async (import "async-await" "async") (param (ref $ifun)) (result i32))
+  (event $async (import "async-await" "async") (param (ref $icont)) (result i32))
   (event $await (import "async-await" "await") (param i32) (result i32))
 
   ;; queue interface
@@ -240,7 +245,7 @@
       (if (ref.is_null (local.get $nextk)) (then (return)))
       (block $on_yield (result (ref $cont))
         (block $on_fulfill (result i32 i32 (ref $cont))
-          (block $on_async (result (ref $ifun) (ref $icont))
+          (block $on_async (result (ref $icont) (ref $icont))
             (block $on_await (result i32 (ref $icont))
               (resume (event $yield $on_yield)
                       (event $fulfill $on_fulfill)
@@ -262,14 +267,14 @@
             )
             (br $l)
           ) ;;   $on_async (result (ref $ifun) (ref $icont))
-          (let (local $f (ref $ifun)) (local $ik (ref $icont))
+          (let (local $ak (ref $icont)) (local $ik (ref $icont))
              ;; create new promise
              (call $new-promise)
              (let (local $p i32)
                 ;; enqueue continuation partially applied to promise
                 (call $enqueue (cont.bind (type $cont) (local.get $p) (local.get $ik)))
                 ;; run computation partially applied to promise
-                (local.set $nextk (cont.bind (type $cont) (local.get $p) (cont.new (type $icont) (local.get $f))))
+                (local.set $nextk (cont.bind (type $cont) (local.get $p) (local.get $ak)))
              )
           )
           (br $l)

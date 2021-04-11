@@ -2,21 +2,26 @@
 
 ;; actor interface
 (module $actor
-  (type $proc (func))
+  (type $func (func))
+  (type $cont (cont $func))
+
   (event $self (export "self") (result i32))
-  (event $spawn (export "spawn") (param (ref $proc)) (result i32))
+  (event $spawn (export "spawn") (param (ref $cont)) (result i32))
   (event $send (export "send") (param i32 i32))
   (event $recv (export "recv") (result i32))
 )
 (register "actor")
 
-
 ;; a simple example - pass a message through a chain of actors
 (module $chain
-  (type $proc (func))
+  (type $func (func))
+  (type $cont (cont $func))
+
+  (type $i-func (func (param i32)))
+  (type $i-cont (cont $i-func))
 
   (event $self (import "actor" "self") (result i32))
-  (event $spawn (import "actor" "spawn") (param (ref $proc)) (result i32))
+  (event $spawn (import "actor" "spawn") (param (ref $cont)) (result i32))
   (event $send (import "actor" "send") (param i32 i32))
   (event $recv (import "actor" "recv") (result i32))
 
@@ -35,7 +40,7 @@
     (if (i32.eqz (local.get $n))
       (then (suspend $send (i32.const 42) (local.get $p))
             (return))
-      (else (return_call $spawnMany (suspend $spawn (func.bind (type $proc) (local.get $p) (ref.func $next)))
+      (else (return_call $spawnMany (suspend $spawn (cont.bind (type $cont) (local.get $p) (cont.new (type $i-cont) (ref.func $next))))
                                     (i32.sub (local.get $n) (i32.const 1))))
 
     )
@@ -53,16 +58,18 @@
 
 ;; interface to lightweight threads
 (module $lwt
-  (type $proc (func))
+  (type $func (func))
+  (type $cont (cont $func))
+
   (event $yield (export "yield"))
-  (event $fork (export "fork") (param (ref $proc)))
+  (event $fork (export "fork") (param (ref $cont)))
 )
 (register "lwt")
 
 ;; queue of threads
 (module $queue
-  (type $proc (func))
-  (type $cont (cont $proc))
+  (type $func (func))
+  (type $cont (cont $func))
 
   ;; Table as simple queue (keeping it simple, no ring buffer)
   (table $queue 0 (ref null $cont))
@@ -120,29 +127,29 @@
 
 ;; simple scheduler for lightweight threads
 (module $scheduler
-  (type $proc (func))
-  (type $cont (cont $proc))
+  (type $func (func))
+  (type $cont (cont $func))
 
   (event $yield (import "lwt" "yield"))
-  (event $fork (import "lwt" "fork") (param (ref $proc)))
+  (event $fork (import "lwt" "fork") (param (ref $cont)))
 
   (func $queue-empty (import "queue" "queue-empty") (result i32))
   (func $dequeue (import "queue" "dequeue") (result (ref null $cont)))
   (func $enqueue (import "queue" "enqueue") (param $k (ref $cont)))
 
-  (func $run (export "run") (param $main (ref $proc))
+  (func $run (export "run") (param $main (ref $func))
     (call $enqueue (cont.new (type $cont) (local.get $main)))
     (loop $l
       (if (call $queue-empty) (then (return)))
       (block $on_yield (result (ref $cont))
-        (block $on_fork (result (ref $proc) (ref $cont))
+        (block $on_fork (result (ref $cont) (ref $cont))
           (resume (event $yield $on_yield) (event $fork $on_fork)
             (call $dequeue)
           )
           (br $l)  ;; thread terminated
-        ) ;;   $on_fork (result (ref $proc) (ref $cont))
-        (call $enqueue)                         ;; current thread
-        (call $enqueue (cont.new (type $cont))) ;; new thread
+        ) ;;   $on_fork (result (ref $cont) (ref $cont))
+        (call $enqueue)  ;; current thread
+        (call $enqueue)  ;; new thread
         (br $l)
       )
       ;;     $on_yield (result (ref $cont))
@@ -212,44 +219,25 @@
 )
 (register "mailboxes")
 
-
-;; partial application of int continuations
-(module $icont
-  (type $proc (func))
-  (type $cont (cont $proc))
-
-  (type $ifun (func (param i32)))
-  (type $icont (cont $ifun))
-
-  (elem declare func $applyf)
-
-  ;; partially apply an icont to an integer argument
-  (func $applyf (param $v i32) (param $k (ref null $icont))
-     (resume (local.get $v) (local.get $k))
-  )
-  (func $apply (export "apply") (param $v i32) (param $k (ref null $icont)) (result (ref $cont))
-     (cont.new (type $cont) (func.bind (type $proc) (local.get $v) (local.get $k) (ref.func $applyf)))
-  )
-)
-(register "icont")
-
-
 ;; actors implemented via lightweight threads
 (module $actor-as-lwt
-  (type $proc (func))
-  (type $cont (cont $proc))
+  (type $func (func))
+  (type $cont (cont $func))
 
-  (type $iproc (func (param i32)))
-  (type $icont (cont $iproc))
+  (type $i-func (func (param i32)))
+  (type $i-cont (cont $i-func))
+
+  (type $ic-func (func (param i32 (ref $cont))))
+  (type $ic-cont (cont $ic-func))
 
   (func $log (import "spectest" "print_i32") (param i32))
 
   ;; lwt interface
   (event $yield (import "lwt" "yield"))
-  (event $fork (import "lwt" "fork") (param (ref $proc)))
+  (event $fork (import "lwt" "fork") (param (ref $cont)))
 
   ;; icont interface
-  (func $apply-icont (import "icont" "apply") (param $v i32) (param $k (ref null $icont)) (result (ref $cont)))
+  (func $apply-icont (import "icont" "apply") (param $v i32) (param $k (ref null $i-cont)) (result (ref $cont)))
 
   ;; mailbox interface
   (func $init (import "mailboxes" "init"))
@@ -265,19 +253,18 @@
 
   ;; actor interface
   (event $self (import "actor" "self") (result i32))
-  (event $spawn (import "actor" "spawn") (param (ref $proc)) (result i32))
+  (event $spawn (import "actor" "spawn") (param (ref $cont)) (result i32))
   (event $send (import "actor" "send") (param i32 i32))
   (event $recv (import "actor" "recv") (result i32))
 
   (elem declare func $actk)
 
   (func $actk (param $mine i32) (param $nextk (ref $cont))
-    (local $res i32)
     (loop $l
-      (block $on_self (result (ref $icont))
-        (block $on_spawn (result (ref $proc) (ref $icont))
+      (block $on_self (result (ref $i-cont))
+        (block $on_spawn (result (ref $cont) (ref $i-cont))
           (block $on_send (result i32 i32 (ref $cont))
-            (block $on_recv (result (ref $icont))
+            (block $on_recv (result (ref $i-cont))
                (resume (event $self $on_self)
                        (event $spawn $on_spawn)
                        (event $send $on_send)
@@ -285,8 +272,8 @@
                        (local.get $nextk)
                )
                (return)
-            ) ;;   $on_recv (result (ref $icont))
-            (let (local $ik (ref $icont))
+            ) ;;   $on_recv (result (ref $i-cont))
+            (let (local $ik (ref $i-cont))
               ;; block this thread until the mailbox is non-empty
               (loop $blocked
                 (if (call $empty-mb (local.get $mine))
@@ -294,9 +281,7 @@
                           (br $blocked))
                 )
               )
-              (call $recv-from-mb (local.get $mine))
-              (local.set $res)
-              (local.set $nextk (call $apply-icont (local.get $res) (local.get $ik)))
+              (local.set $nextk (cont.bind (type $cont) (call $recv-from-mb (local.get $mine)) (local.get $ik)))
             )
             (br $l)
           ) ;;   $on_send (result i32 i32 (ref $cont))
@@ -305,26 +290,27 @@
             (local.set $nextk (local.get $k))
           )
           (br $l)
-        ) ;;   $on_spawn (result (ref $proc) (ref $icont))
-        (let (local $you (ref $proc)) (local $ik (ref $icont))
+        ) ;;   $on_spawn (result (ref $cont) (ref $i-cont))
+        (let (local $you (ref $cont)) (local $ik (ref $i-cont))
           (call $new-mb)
-          (local.set $res)
-          (suspend $fork (func.bind (type $proc)
-                                    (local.get $res)
-                                    (cont.new (type $cont) (local.get $you))
-                                    (ref.func $actk)))
-          (local.set $nextk (call $apply-icont (local.get $res) (local.get $ik)))
+          (let (local $yours i32)
+            (suspend $fork (cont.bind (type $cont)
+                                      (local.get $yours)
+                                      (local.get $you)
+                                      (cont.new (type $ic-cont) (ref.func $actk))))
+            (local.set $nextk (cont.bind (type $cont) (local.get $yours) (local.get $ik)))
+          )
         )
         (br $l)
-      ) ;;   $on_self (result (ref $icont))
-      (let (local $ik (ref $icont))
-        (local.set $nextk (call $apply-icont (local.get $mine) (local.get $ik)))
+      ) ;;   $on_self (result (ref $i-cont))
+      (let (local $ik (ref $i-cont))
+        (local.set $nextk (cont.bind (type $cont) (local.get $mine) (local.get $ik)))
       )
       (br $l)
     )
   )
 
-  (func $act (export "act") (param $f (ref $proc))
+  (func $act (export "act") (param $f (ref $func))
     (call $init)
     (call $actk (call $new-mb) (cont.new (type $cont) (local.get $f)))
   )
@@ -333,38 +319,38 @@
 
 ;; composing the actor and scheduler handlers together
 (module $actor-scheduler
-  (type $proc (func))
-  (type $procproc (func (param (ref $proc))))
+  (type $func (func))
+  (type $f-func (func (param (ref $func))))
 
   (elem declare func $act $scheduler $comp)
 
-  (func $act (import "actor-as-lwt" "act") (param $f (ref $proc)))
-  (func $scheduler (import "scheduler" "run") (param $main (ref $proc)))
+  (func $act (import "actor-as-lwt" "act") (param $f (ref $func)))
+  (func $scheduler (import "scheduler" "run") (param $main (ref $func)))
 
-  (func $comp (param $h (ref $procproc)) (param $g (ref $procproc)) (param $f (ref $proc))
-    (call_ref (func.bind (type $proc) (local.get $f) (local.get $g)) (local.get $h))
+  (func $comp (param $h (ref $f-func)) (param $g (ref $f-func)) (param $f (ref $func))
+    (call_ref (func.bind (type $func) (local.get $f) (local.get $g)) (local.get $h))
   )
 
-  (func $compose (param $h (ref $procproc)) (param $g (ref $procproc)) (result (ref $procproc))
-    (func.bind (type $procproc) (local.get $h) (local.get $g) (ref.func $comp))
+  (func $compose (param $h (ref $f-func)) (param $g (ref $f-func)) (result (ref $f-func))
+    (func.bind (type $f-func) (local.get $h) (local.get $g) (ref.func $comp))
   )
 
-  (func $run-actor (export "run-actor") (param $f (ref $proc))
+  (func $run-actor (export "run-actor") (param $f (ref $func))
     (call_ref (local.get $f) (call $compose (ref.func $scheduler) (ref.func $act)))
   )
 )
 (register "actor-scheduler")
 
 (module
-  (type $proc (func))
+  (type $func (func))
 
   (elem declare func $chain)
 
-  (func $run-actor (import "actor-scheduler" "run-actor") (param $f (ref $proc)))
+  (func $run-actor (import "actor-scheduler" "run-actor") (param $f (ref $func)))
   (func $chain (import "chain" "chain") (param $n i32))
 
   (func $run-chain (export "run-chain") (param $n i32)
-    (call $run-actor (func.bind (type $proc) (local.get $n) (ref.func $chain)))
+    (call $run-actor (func.bind (type $func) (local.get $n) (ref.func $chain)))
   )
 )
 

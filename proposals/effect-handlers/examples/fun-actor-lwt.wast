@@ -2,9 +2,11 @@
 
 ;; actor interface
 (module $actor
-  (type $proc (func))
+  (type $func (func))
+  (type $cont (cont $func))
+
   (event $self (export "self") (result i32))
-  (event $spawn (export "spawn") (param (ref $proc)) (result i32))
+  (event $spawn (export "spawn") (param (ref $cont)) (result i32))
   (event $send (export "send") (param i32 i32))
   (event $recv (export "recv") (result i32))
 )
@@ -12,10 +14,14 @@
 
 ;; a simple example - pass a message through a chain of actors
 (module $chain
-  (type $proc (func))
+  (type $func (func))
+  (type $cont (cont $func))
+
+  (type $i-func (func (param i32)))
+  (type $i-cont (cont $i-func))
 
   (event $self (import "actor" "self") (result i32))
-  (event $spawn (import "actor" "spawn") (param (ref $proc)) (result i32))
+  (event $spawn (import "actor" "spawn") (param (ref $cont)) (result i32))
   (event $send (import "actor" "send") (param i32 i32))
   (event $recv (import "actor" "recv") (result i32))
 
@@ -34,7 +40,7 @@
     (if (i32.eqz (local.get $n))
       (then (suspend $send (i32.const 42) (local.get $p))
             (return))
-      (else (return_call $spawnMany (suspend $spawn (func.bind (type $proc) (local.get $p) (ref.func $next)))
+      (else (return_call $spawnMany (suspend $spawn (cont.bind (type $cont) (local.get $p) (cont.new (type $i-cont) (ref.func $next))))
                                     (i32.sub (local.get $n) (i32.const 1))))
 
     )
@@ -43,9 +49,7 @@
   ;; send the message 42 through a chain of n actors
   (func $chain (export "chain") (param $n i32)
     (local $s i32)
-    (suspend $self)
-    (local.get $n)
-    (call $spawnMany)
+    (call $spawnMany (suspend $self) (local.get $n))
     (local.set $s (suspend $recv))
     (call $log (local.get $s))
   )
@@ -54,16 +58,18 @@
 
 ;; interface to lightweight threads
 (module $lwt
-  (type $proc (func))
+  (type $func (func))
+  (type $cont (cont $func))
+
   (event $yield (export "yield"))
-  (event $fork (export "fork") (param (ref $proc)))
+  (event $fork (export "fork") (param (ref $cont)))
 )
 (register "lwt")
 
 ;; queue of threads
 (module $queue
-  (type $proc (func))
-  (type $cont (cont $proc))
+  (type $func (func))
+  (type $cont (cont $func))
 
   ;; Table as simple queue (keeping it simple, no ring buffer)
   (table $queue 0 (ref null $cont))
@@ -121,29 +127,29 @@
 
 ;; simple scheduler
 (module $scheduler
-  (type $proc (func))
-  (type $cont (cont $proc))
+  (type $func (func))
+  (type $cont (cont $func))
 
   (event $yield (import "lwt" "yield"))
-  (event $fork (import "lwt" "fork") (param (ref $proc)))
+  (event $fork (import "lwt" "fork") (param (ref $cont)))
 
   (func $queue-empty (import "queue" "queue-empty") (result i32))
   (func $dequeue (import "queue" "dequeue") (result (ref null $cont)))
   (func $enqueue (import "queue" "enqueue") (param $k (ref $cont)))
 
-  (func $scheduler (export "scheduler") (param $main (ref $proc))
+  (func $scheduler (export "scheduler") (param $main (ref $func))
     (call $enqueue (cont.new (type $cont) (local.get $main)))
     (loop $l
       (if (call $queue-empty) (then (return)))
       (block $on_yield (result (ref $cont))
-        (block $on_fork (result (ref $proc) (ref $cont))
+        (block $on_fork (result (ref $cont) (ref $cont))
           (resume (event $yield $on_yield) (event $fork $on_fork)
             (call $dequeue)
           )
           (br $l)  ;; thread terminated
-        ) ;;   $on_fork (result (ref $proc) (ref $cont))
-        (call $enqueue)                         ;; current thread
-        (call $enqueue (cont.new (type $cont))) ;; new thread
+        ) ;;   $on_fork (result (ref $cont) (ref $cont))
+        (call $enqueue) ;; current thread
+        (call $enqueue) ;; new thread
         (br $l)
       )
       ;;     $on_yield (result (ref $cont))
@@ -215,17 +221,20 @@
 
 ;; actors via lightweight threads
 (module $actor-as-lwt
-  (type $proc (func))
-  (type $cont (cont $proc))
+  (type $func (func))
+  (type $cont (cont $func))
 
-  (type $iproc (func (param i32)))
-  (type $icont (cont $iproc))
+  (type $i-func (func (param i32)))
+  (type $i-cont (cont $i-func))
+
+  (type $icont-func (func (param i32 (ref $cont))))
+  (type $icont-cont (cont $icont-func))
 
   (func $log (import "spectest" "print_i32") (param i32))
 
   ;; lwt interface
   (event $yield (import "lwt" "yield"))
-  (event $fork (import "lwt" "fork") (param (ref $proc)))
+  (event $fork (import "lwt" "fork") (param (ref $cont)))
 
   ;; mailbox interface
   (func $init (import "mailboxes" "init"))
@@ -236,18 +245,18 @@
 
   ;; actor interface
   (event $self (import "actor" "self") (result i32))
-  (event $spawn (import "actor" "spawn") (param (ref $proc)) (result i32))
+  (event $spawn (import "actor" "spawn") (param (ref $cont)) (result i32))
   (event $send (import "actor" "send") (param i32 i32))
   (event $recv (import "actor" "recv") (result i32))
 
-  (elem declare func $act-nullary)
+  (elem declare func $act-nullary $act-res)
 
   ;; resume with $ik applied to $res
-  (func $act-res (param $mine i32) (param $res i32) (param $ik (ref $icont))
-    (block $on_self (result (ref $icont))
-      (block $on_spawn (result (ref $proc) (ref $icont))
+  (func $act-res (param $mine i32) (param $res i32) (param $ik (ref $i-cont))
+    (block $on_self (result (ref $i-cont))
+      (block $on_spawn (result (ref $cont) (ref $i-cont))
         (block $on_send (result i32 i32 (ref $cont))
-          (block $on_recv (result (ref $icont))
+          (block $on_recv (result (ref $i-cont))
              ;; this should really be a tail call to the continuation
              ;; do we need a 'return_resume' operator?
              (resume (event $self $on_self)
@@ -257,8 +266,8 @@
                      (local.get $res) (local.get $ik)
              )
              (return)
-          ) ;;   $on_recv (result (ref $icont))
-          (let (local $ik (ref $icont))
+          ) ;;   $on_recv (result (ref $i-cont))
+          (let (local $ik (ref $i-cont))
             ;; block this thread until the mailbox is non-empty
             (loop $l
               (if (call $empty-mb (local.get $mine))
@@ -275,17 +284,20 @@
           (call $send-to-mb)
           (return_call $act-nullary (local.get $mine) (local.get $k)))
         (unreachable)
-      ) ;;   $on_spawn (result (ref $proc) (ref $icont))
-      (let (local $you (ref $proc)) (local $ik (ref $icont))
+      ) ;;   $on_spawn (result (ref $cont) (ref $i-cont))
+      (let (local $you (ref $cont)) (local $ik (ref $i-cont))
         (call $new-mb)
-        (local.set $res)
-        (suspend $fork (func.bind (type $proc) (local.get $res)
-                                  (cont.new (type $cont) (local.get $you)) (ref.func $act-nullary)))
-        (return_call $act-res (local.get $mine) (local.get $res) (local.get $ik))
+        (let (local $yours i32)
+          (suspend $fork (cont.bind (type $cont)
+                                    (local.get $yours)
+                                    (local.get $you)
+                                    (cont.new (type $icont-cont) (ref.func $act-nullary))))
+          (return_call $act-res (local.get $mine) (local.get $yours) (local.get $ik))
+        )
       )
       (unreachable)
-    ) ;;   $on_self (result (ref $icont))
-    (let (local $ik (ref $icont))
+    ) ;;   $on_self (result (ref $i-cont))
+    (let (local $ik (ref $i-cont))
       (return_call $act-res (local.get $mine) (local.get $mine) (local.get $ik))
     )
     (unreachable)
@@ -294,10 +306,10 @@
   ;; resume with nullary continuation
   (func $act-nullary (param $mine i32) (param $k (ref $cont))
     (local $res i32)
-    (block $on_self (result (ref $icont))
-      (block $on_spawn (result (ref $proc) (ref $icont))
+    (block $on_self (result (ref $i-cont))
+      (block $on_spawn (result (ref $cont) (ref $i-cont))
         (block $on_send (result i32 i32 (ref $cont))
-          (block $on_recv (result (ref $icont))
+          (block $on_recv (result (ref $i-cont))
              ;; this should really be a tail call to the continuation
              ;; do we need a 'return_resume' operator?
              (resume (event $self $on_self)
@@ -307,8 +319,8 @@
                      (local.get $k)
              )
              (return)
-          ) ;;   $on_recv (result (ref $icont))
-          (let (local $ik (ref $icont))
+          ) ;;   $on_recv (result (ref $i-cont))
+          (let (local $ik (ref $i-cont))
             ;; block this thread until the mailbox is non-empty
             (loop $l
               (if (call $empty-mb (local.get $mine))
@@ -325,23 +337,26 @@
           (call $send-to-mb)
           (return_call $act-nullary (local.get $mine) (local.get $k)))
         (unreachable)
-      ) ;;   $on_spawn (result (ref $proc) (ref $icont))
-      (let (local $you (ref $proc)) (local $ik (ref $icont))
+      ) ;;   $on_spawn (result (ref $cont) (ref $i-cont))
+      (let (local $you (ref $cont)) (local $ik (ref $i-cont))
         (call $new-mb)
-        (local.set $res)
-        (suspend $fork (func.bind (type $proc) (local.get $res)
-                                  (cont.new (type $cont) (local.get $you)) (ref.func $act-nullary)))
-        (return_call $act-res (local.get $mine) (local.get $res) (local.get $ik))
+        (let (local $yours i32)
+          (suspend $fork (cont.bind (type $cont)
+                                    (local.get $yours)
+                                    (local.get $you)
+                                    (cont.new (type $icont-cont) (ref.func $act-nullary))))
+          (return_call $act-res (local.get $mine) (local.get $yours) (local.get $ik))
+        )
       )
       (unreachable)
-    ) ;;   $on_self (result (ref $icont))
-    (let (local $ik (ref $icont))
+    ) ;;   $on_self (result (ref $i-cont))
+    (let (local $ik (ref $i-cont))
       (return_call $act-res (local.get $mine) (local.get $mine) (local.get $ik))
     )
     (unreachable)
   )
 
-  (func $act (export "act") (param $f (ref $proc))
+  (func $act (export "act") (param $f (ref $func))
     (call $init)
     (call $act-nullary (call $new-mb) (cont.new (type $cont) (local.get $f)))
   )
