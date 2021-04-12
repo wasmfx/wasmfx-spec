@@ -2,8 +2,8 @@
 
 ;; interface to lightweight threads
 (module $lwt
-  (type $proc (func))
-  (type $cont (cont $proc))
+  (type $func (func))
+  (type $cont (cont $func))
 
   (event $yield (export "yield"))
   (event $fork (export "fork") (param (ref $cont)))
@@ -11,8 +11,8 @@
 (register "lwt")
 
 (module $example
-  (type $proc (func))
-  (type $cont (cont $proc))
+  (type $func (func))
+  (type $cont (cont $func))
 
   (event $yield (import "lwt" "yield"))
   (event $fork (import "lwt" "fork") (param (ref $cont)))
@@ -58,8 +58,8 @@
 (register "example")
 
 (module $queue
-  (type $proc (func))
-  (type $cont (cont $proc))
+  (type $func (func))
+  (type $cont (cont $func))
 
   ;; Table as simple queue (keeping it simple, no ring buffer)
   (table $queue 0 (ref null $cont))
@@ -116,8 +116,8 @@
 (register "queue")
 
 (module $scheduler
-  (type $proc (func))
-  (type $cont (cont $proc))
+  (type $func (func))
+  (type $cont (cont $func))
 
   (event $yield (import "lwt" "yield"))
   (event $fork (import "lwt" "fork") (param (ref $cont)))
@@ -260,8 +260,8 @@
 (register "scheduler")
 
 (module
-  (type $proc (func))
-  (type $cont (cont $proc))
+  (type $func (func))
+  (type $cont (cont $func))
 
   (func $scheduler1 (import "scheduler" "sync") (param $nextk (ref null $cont)))
   (func $scheduler2 (import "scheduler" "kt") (param $nextk (ref null $cont)))

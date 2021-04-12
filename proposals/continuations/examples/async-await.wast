@@ -1,7 +1,7 @@
 ;; async-await interface
 (module $async-await
-  (type $ifun (func (param i32)))
-  (type $icont (cont $ifun))
+  (type $i-func (func (param i32)))
+  (type $i-cont (cont $i-func))
 
   ;; We use yield and fulfill to simulate asynchronous operations.
   ;;
@@ -10,21 +10,21 @@
   (event $yield (export "yield"))
   (event $fulfill (export "fulfill") (param i32) (param i32))
 
-  (event $async (export "async") (param (ref $icont)) (result i32))
+  (event $async (export "async") (param (ref $i-cont)) (result i32))
   (event $await (export "await") (param i32) (result i32))
 )
 (register "async-await")
 
 (module $example
-  (type $ifun (func (param i32)))
-  (type $icont (cont $ifun))
+  (type $i-func (func (param i32)))
+  (type $i-cont (cont $i-func))
 
   (type $iii-fun (func (param i32 i32 i32)))
   (type $iii-cont (cont $iii-fun))
 
   (event $yield (import "async-await" "yield"))
   (event $fulfill (import "async-await" "fulfill") (param i32) (param i32))
-  (event $async (import "async-await" "async") (param (ref $icont)) (result i32))
+  (event $async (import "async-await" "async") (param (ref $i-cont)) (result i32))
   (event $await (import "async-await" "await") (param i32) (result i32))
 
   (func $log (import "spectest" "print_i32") (param i32))
@@ -39,7 +39,6 @@
   ;; the final result is written to the promise $p
   (func $sum (param $i i32) (param $j i32) (param $p i32)
      (local $a i32)
-     (local.set $a (i32.const 0))
      (loop $l
         (call $log (local.get $i))
         (local.set $a (i32.add (local.get $a) (local.get $i)))
@@ -64,11 +63,11 @@
      (local $y i32)
 
      (call $log (i32.const -1))
-     (local.set $p (suspend $async (cont.bind (type $icont) (i32.const 1) (i32.const 3) (cont.new (type $iii-cont) (ref.func $sum)))))
+     (local.set $p (suspend $async (cont.bind (type $i-cont) (i32.const 1) (i32.const 3) (cont.new (type $iii-cont) (ref.func $sum)))))
      (call $log (i32.const -2))
-     (local.set $q (suspend $async (cont.bind (type $icont) (i32.const 5) (i32.const 7) (cont.new (type $iii-cont) (ref.func $sum)))))
+     (local.set $q (suspend $async (cont.bind (type $i-cont) (i32.const 5) (i32.const 7) (cont.new (type $iii-cont) (ref.func $sum)))))
      (call $log (i32.const -3))
-     (local.set $r (suspend $async (cont.bind (type $icont) (i32.const 10) (i32.const 15) (cont.new (type $iii-cont) (ref.func $sum)))))
+     (local.set $r (suspend $async (cont.bind (type $i-cont) (i32.const 10) (i32.const 15) (cont.new (type $iii-cont) (ref.func $sum)))))
      (call $log (i32.const -4))
 
      (local.set $x (i32.mul (suspend $await (local.get $p))
@@ -87,8 +86,8 @@
 
 ;; queue of threads
 (module $queue
-  (type $proc (func))
-  (type $cont (cont $proc))
+  (type $func (func))
+  (type $cont (cont $func))
 
   ;; Table as simple queue (keeping it simple, no ring buffer)
   (table $queue 0 (ref null $cont))
@@ -146,11 +145,11 @@
 
 ;; promises
 (module $promise
-  (type $proc (func))
-  (type $cont (cont $proc))
+  (type $func (func))
+  (type $cont (cont $func))
 
-  (type $ifun (func (param i32)))
-  (type $icont (cont $ifun))
+  (type $i-func (func (param i32)))
+  (type $i-cont (cont $i-func))
 
   ;; a simplistic implementation of promises that assumes a maximum of
   ;; 1000 promises and a maximum of one observer per promise
@@ -160,7 +159,7 @@
 
   (global $num-promises (mut i32) (i32.const 0))
   (global $max-promises i32 (i32.const 1000))
-  (table $observers 1000 (ref null $icont))  ;; observers waiting for promises to be fulfilled
+  (table $observers 1000 (ref null $i-cont))  ;; observers waiting for promises to be fulfilled
   (memory 1)                                 ;; promise values
 
   ;; create and return a new promise
@@ -171,7 +170,7 @@
         (then (throw $too-many-promises)))
      (local.set $p (global.get $num-promises))
      (local.set $offset (i32.mul (local.get $p) (i32.const 4)))
-     (table.set $observers (local.get $p) (ref.null $icont))
+     (table.set $observers (local.get $p) (ref.null $i-cont))
      (i32.store (local.get $offset) (i32.const -1))
      (global.set $num-promises (i32.add (local.get $p) (i32.const 1)))
      (return (local.get $p))
@@ -192,7 +191,7 @@
   )
 
   ;; register an observer for when promise $p is fulfilled
-  (func $await (export "await") (param $p i32) (param $k (ref $icont))
+  (func $await (export "await") (param $p i32) (param $k (ref $i-cont))
     (if (ref.is_null (table.get $observers (local.get $p)))
        (then (table.set $observers (local.get $p) (local.get $k)))
        (else (throw $too-many-observers))
@@ -202,7 +201,7 @@
   ;; fulfill promise $p with value $v
   (func $fulfill (export "fulfill") (param $p i32) (param $v i32) (result (ref null $cont))
     (local $offset i32)
-    (local $k (ref null $icont))
+    (local $k (ref null $i-cont))
     (local.set $offset (i32.mul (local.get $p) (i32.const 4)))
     (i32.store (local.get $offset) (local.get $v))
     (local.set $k (table.get $observers (local.get $p)))
@@ -216,16 +215,16 @@
 
 ;; async-await scheduler
 (module $scheduler
-  (type $proc (func))
-  (type $cont (cont $proc))
+  (type $func (func))
+  (type $cont (cont $func))
 
-  (type $ifun (func (param i32)))
-  (type $icont (cont $ifun))
+  (type $i-func (func (param i32)))
+  (type $i-cont (cont $i-func))
 
   ;; async-await interface
   (event $yield (import "async-await" "yield"))
   (event $fulfill (import "async-await" "fulfill") (param i32) (param i32))
-  (event $async (import "async-await" "async") (param (ref $icont)) (result i32))
+  (event $async (import "async-await" "async") (param (ref $i-cont)) (result i32))
   (event $await (import "async-await" "await") (param i32) (result i32))
 
   ;; queue interface
@@ -237,7 +236,7 @@
   (func $new-promise (import "promise" "new") (result i32))
   (func $promise-fulfilled (import "promise" "fulfilled") (param $p i32) (result i32))
   (func $promise-value (import "promise" "read") (param $p i32) (result i32))
-  (func $await-promise (import "promise" "await") (param $p i32) (param $k (ref $icont)))
+  (func $await-promise (import "promise" "await") (param $p i32) (param $k (ref $i-cont)))
   (func $fulfill-promise (import "promise" "fulfill") (param $p i32) (param $v i32) (result (ref null $cont)))
 
   (func $run (export "run") (param $nextk (ref null $cont))
@@ -245,8 +244,8 @@
       (if (ref.is_null (local.get $nextk)) (then (return)))
       (block $on_yield (result (ref $cont))
         (block $on_fulfill (result i32 i32 (ref $cont))
-          (block $on_async (result (ref $icont) (ref $icont))
-            (block $on_await (result i32 (ref $icont))
+          (block $on_async (result (ref $i-cont) (ref $i-cont))
+            (block $on_await (result i32 (ref $i-cont))
               (resume (event $yield $on_yield)
                       (event $fulfill $on_fulfill)
                       (event $async $on_async)
@@ -255,8 +254,8 @@
               )
               (local.set $nextk (call $dequeue))
               (br $l)  ;; thread terminated
-            ) ;;   $on_await (result i32 (ref $icont))
-            (let (local $p i32) (local $ik (ref $icont))
+            ) ;;   $on_await (result i32 (ref $i-cont))
+            (let (local $p i32) (local $ik (ref $i-cont))
               (if (call $promise-fulfilled (local.get $p))
                  ;; if promise fulfilled then run continuation partially applied to value
                  (then (local.set $nextk (cont.bind (type $cont) (call $promise-value (local.get $p)) (local.get $ik))))
@@ -266,8 +265,8 @@
               )
             )
             (br $l)
-          ) ;;   $on_async (result (ref $ifun) (ref $icont))
-          (let (local $ak (ref $icont)) (local $ik (ref $icont))
+          ) ;;   $on_async (result (ref $i-func) (ref $i-cont))
+          (let (local $ak (ref $i-cont)) (local $ik (ref $i-cont))
              ;; create new promise
              (call $new-promise)
              (let (local $p i32)
@@ -300,8 +299,8 @@
 (register "scheduler")
 
 (module
-  (type $proc (func))
-  (type $cont (cont $proc))
+  (type $func (func))
+  (type $cont (cont $func))
 
   (func $scheduler (import "scheduler" "run") (param $nextk (ref null $cont)))
 

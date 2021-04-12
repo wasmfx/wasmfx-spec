@@ -36,20 +36,20 @@
     (suspend $send (local.get $s) (local.get $p))
   )
 
-  (func $spawnMany (param $p i32) (param $n i32)
-    (if (i32.eqz (local.get $n))
-      (then (suspend $send (i32.const 42) (local.get $p))
-            (return))
-      (else (return_call $spawnMany (suspend $spawn (cont.bind (type $cont) (local.get $p) (cont.new (type $i-cont) (ref.func $next))))
-                                    (i32.sub (local.get $n) (i32.const 1))))
-
-    )
-  )
-
   ;; send the message 42 through a chain of n actors
   (func $chain (export "chain") (param $n i32)
     (local $s i32)
-    (call $spawnMany (suspend $self) (local.get $n))
+    (local $p i32)
+    (local.set $p (suspend $self))
+
+    (loop $l
+      (if (i32.eqz (local.get $n))
+        (then (suspend $send (i32.const 42) (local.get $p)))
+        (else (local.set $p (suspend $spawn (cont.bind (type $cont) (local.get $p) (cont.new (type $i-cont) (ref.func $next)))))
+              (local.set $n (i32.sub (local.get $n) (i32.const 1)))
+              (br $l))
+      )
+    )
     (local.set $s (suspend $recv))
     (call $log (local.get $s))
   )
@@ -162,7 +162,7 @@
 
 (module $mailboxes
   ;; Stupid implementation of mailboxes that raises an exception if
-  ;; there are too many mailboxes or if more than one messages is sent
+  ;; there are too many mailboxes or if more than one message is sent
   ;; to any given mailbox.
   ;;
   ;; Sufficient for the simple chain example.

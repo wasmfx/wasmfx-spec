@@ -2,8 +2,8 @@
 
 ;; actor interface
 (module $actor
-  (type $proc (func))
-  (type $cont (cont $proc))
+  (type $func (func))
+  (type $cont (cont $func))
 
   (event $self (export "self") (result i32))
   (event $spawn (export "spawn") (param (ref $cont)) (result i32))
@@ -14,11 +14,11 @@
 
 ;; a simple example - pass a message through a chain of actors
 (module $chain
-  (type $proc (func))
-  (type $cont (cont $proc))
+  (type $func (func))
+  (type $cont (cont $func))
 
-  (type $iproc (func (param i32)))
-  (type $icont (cont $iproc))
+  (type $i-func (func (param i32)))
+  (type $i-cont (cont $i-func))
 
   (event $self (import "actor" "self") (result i32))
   (event $spawn (import "actor" "spawn") (param (ref $cont)) (result i32))
@@ -36,30 +36,28 @@
     (suspend $send (local.get $s) (local.get $p))
   )
 
-  (func $spawnMany (param $p i32) (param $n i32)
-    (if (i32.eqz (local.get $n))
-      (then (suspend $send (i32.const 42) (local.get $p))
-            (return))
-      (else (return_call $spawnMany (suspend $spawn (cont.bind (type $cont) (local.get $p) (cont.new (type $icont) (ref.func $next))))
-                                    (i32.sub (local.get $n) (i32.const 1))))
-
-    )
-  )
-
   ;; send the message 42 through a chain of n actors
   (func $chain (export "chain") (param $n i32)
-    (local $s i32)
-    (call $spawnMany (suspend $self) (local.get $n))
-    (local.set $s (suspend $recv))
-    (call $log (local.get $s))
+    (local $p i32)
+    (local.set $p (suspend $self))
+
+    (loop $l
+      (if (i32.eqz (local.get $n))
+        (then (suspend $send (i32.const 42) (local.get $p)))
+        (else (local.set $p (suspend $spawn (cont.bind (type $cont) (local.get $p) (cont.new (type $i-cont) (ref.func $next)))))
+              (local.set $n (i32.sub (local.get $n) (i32.const 1)))
+              (br $l))
+      )
+    )
+    (call $log (suspend $recv))
   )
 )
 (register "chain")
 
 ;; queues of threads and mailboxes
 (module $queue
-  (type $proc (func))
-  (type $cont (cont $proc))
+  (type $func (func))
+  (type $cont (cont $func))
 
   (func $log (import "spectest" "print_i32") (param i32))
 
@@ -175,7 +173,7 @@
 
 (module $mailboxes
   ;; Stupid implementation of mailboxes that raises an exception if
-  ;; there are too many mailboxes or if more than one messages is sent
+  ;; there are too many mailboxes or if more than one message is sent
   ;; to any given mailbox.
   ;;
   ;; Sufficient for the simple chain example.
@@ -237,8 +235,8 @@
 
 ;; actors implemented directly
 (module $scheduler
-  (type $proc (func))
-  (type $cont (cont $proc))
+  (type $func (func))
+  (type $cont (cont $func))
 
   (func $log (import "spectest" "print_i32") (param i32))
 
@@ -365,8 +363,8 @@
 (register "scheduler")
 
 (module
-  (type $proc (func))
-  (type $cont (cont $proc))
+  (type $func (func))
+  (type $cont (cont $func))
 
   (type $iproc (func (param i32)))
   (type $icont (cont $iproc))

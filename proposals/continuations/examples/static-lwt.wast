@@ -38,8 +38,8 @@
 
 ;; queue of threads
 (module $queue
-  (type $proc (func))
-  (type $cont (cont $proc))
+  (type $func (func))
+  (type $cont (cont $func))
 
   ;; Table as simple queue (keeping it simple, no ring buffer)
   (table $queue 0 (ref null $cont))
@@ -96,8 +96,8 @@
 (register "queue")
 
 (module $scheduler
-  (type $proc (func))
-  (type $cont (cont $proc))
+  (type $func (func))
+  (type $cont (cont $func))
 
   (event $yield (import "lwt" "yield"))
 
@@ -123,8 +123,8 @@
 (register "scheduler")
 
 (module
-  (type $proc (func))
-  (type $cont (cont $proc))
+  (type $func (func))
+  (type $cont (cont $func))
 
   (func $scheduler (import "scheduler" "run"))
   (func $enqueue (import "queue" "enqueue") (param (ref $cont)))
