@@ -16,7 +16,7 @@ Based on [typed reference proposal](https://github.com/WebAssembly/function-refe
 ### Instructions
 
 * `cont.new <typeidx>` creates a new continuation
-  - `cont.new $ct : [(ref $ft)] -> [(ref $ct)]`
+  - `cont.new $ct : [(ref null? $ft)] -> [(ref $ct)]`
     - iff `$ct = cont $ft`
 
 * `cont.bind <typidx>` binds a continuation to (partial) arguments
