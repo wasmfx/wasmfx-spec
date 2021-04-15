@@ -97,7 +97,7 @@ H^ea ::=
   label_n{instr*} H^ea end
   frame_n{F} H^ea end
   catch{...} H^ea end
-  handle{(ea' $l)} H^ea end   (iff ea notin e1'*)
+  handle{(ea' $l)*} H^ea end   (iff ea notin ea'*)
 ```
 
 
