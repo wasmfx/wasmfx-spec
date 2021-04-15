@@ -151,7 +151,8 @@ H^ea ::=
 * `S; F; (handle H^ea[(suspend $e)] end)  --> S; F; trap`
   - iff `ea = F.evts[$e]`
 
-* `S; F; (handle{(ea1 $l1)* (ea $l) (ea2 $l2)*} H^ea[v^n (suspend $e)] end)  --> S'; F; (v^n) (ref.cont |S.conts|) (br $l)`
-  - iff `ea = F.evts[$e]`
+* `S; F; (handle{(ea1 $l1)* (ea $l) (ea2 $l2)*} H^ea[v^n (suspend $e)] end)  --> S'; F; v^n (ref.cont |S.conts|) (br $l)`
+  - iff `ea notin ea1*`
+  - and `ea = F.evts[$e]`
   - and `S.evts[ea].type = [t1^n] -> [t2^m]`
   - and `S' = S with conts += (H^ea : m)`
