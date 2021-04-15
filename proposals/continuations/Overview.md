@@ -122,7 +122,7 @@ H^ea ::=
   - and `$ft = [t1'*] -> [t2'*]`
   - and `n = n' - |t1'*|`
   - and `S' = S with conts[ca] = epsilon with conts += (E : n' - n)`
-  - and `E = v^n E'`
+  - and `E = E'[v^n _]`
 
 * `S; F; (ref.null t) (resume (event $e $l)*)  -->  S; F; trap`
 
