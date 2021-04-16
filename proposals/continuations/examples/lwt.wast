@@ -2,8 +2,8 @@
 
 ;; interface to lightweight threads
 (module $lwt
-  (type $func (func))
-  (type $cont (cont $func))
+  (type $func (func))       ;; [] -> []
+  (type $cont (cont $func)) ;; cont ([] -> [])
 
   (event $yield (export "yield"))
   (event $fork (export "fork") (param (ref $cont)))
@@ -57,6 +57,7 @@
 )
 (register "example")
 
+;; queue of threads
 (module $queue
   (type $func (func))
   (type $cont (cont $func))
@@ -116,8 +117,8 @@
 (register "queue")
 
 (module $scheduler
-  (type $func (func))
-  (type $cont (cont $func))
+  (type $func (func))       ;; [] -> []
+  (type $cont (cont $func)) ;; cont ([] -> [])
 
   (event $yield (import "lwt" "yield"))
   (event $fork (import "lwt" "fork") (param (ref $cont)))
@@ -263,11 +264,11 @@
   (type $func (func))
   (type $cont (cont $func))
 
-  (func $scheduler1 (import "scheduler" "sync") (param $nextk (ref null $cont)))
-  (func $scheduler2 (import "scheduler" "kt") (param $nextk (ref null $cont)))
-  (func $scheduler3 (import "scheduler" "tk") (param $nextk (ref null $cont)))
-  (func $scheduler4 (import "scheduler" "ykt") (param $nextk (ref null $cont)))
-  (func $scheduler5 (import "scheduler" "ytk") (param $nextk (ref null $cont)))
+  (func $scheduler-sync (import "scheduler" "sync") (param $nextk (ref null $cont)))
+  (func $scheduler-kt (import "scheduler" "kt") (param $nextk (ref null $cont)))
+  (func $schedule-tk (import "scheduler" "tk") (param $nextk (ref null $cont)))
+  (func $scheduler-ykt (import "scheduler" "ykt") (param $nextk (ref null $cont)))
+  (func $scheduler-ytk (import "scheduler" "ytk") (param $nextk (ref null $cont)))
 
   (func $log (import "spectest" "print_i32") (param i32))
 
@@ -277,15 +278,15 @@
 
   (func (export "run")
     (call $log (i32.const -1))
-    (call $scheduler1 (cont.new (type $cont) (ref.func $main)))
+    (call $scheduler-sync (cont.new (type $cont) (ref.func $main)))
     (call $log (i32.const -2))
-    (call $scheduler2 (cont.new (type $cont) (ref.func $main)))
+    (call $scheduler-kt (cont.new (type $cont) (ref.func $main)))
     (call $log (i32.const -3))
-    (call $scheduler3 (cont.new (type $cont) (ref.func $main)))
+    (call $schedule-tk (cont.new (type $cont) (ref.func $main)))
     (call $log (i32.const -4))
-    (call $scheduler4 (cont.new (type $cont) (ref.func $main)))
+    (call $scheduler-ykt (cont.new (type $cont) (ref.func $main)))
     (call $log (i32.const -5))
-    (call $scheduler5 (cont.new (type $cont) (ref.func $main)))
+    (call $scheduler-ytk (cont.new (type $cont) (ref.func $main)))
     (call $log (i32.const -6))
   )
 )
