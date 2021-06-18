@@ -1,4 +1,4 @@
-# Typed Continuations as the Basis for Stack Switching Proposal
+# Typed Continuations as the Basis for Stack Switching
 
 This explainer document introduces the typed continuations as the
 basis for stack switching, which adds a general mechanism for
@@ -9,23 +9,72 @@ non-local control flow manipulation to WebAssembly modules.
 1. [Motivation](#motivation)
 2. [Additional Requirements](#additional-requirements)
 3. [Proposal](#proposal)
-  1. [Stack Creation](#stack-creation)
-  2. [Stack Suspension](#stack-suspension)
-  3. [Stack Resumption](#stack-resumption)
+   1. [Stack Creation](#stack-creation)
+   2. [Stack Suspension](#stack-suspension)
+   3. [Stack Resumption](#stack-resumption)
 4. [Examples](#examples)
 5. [FAQ](#faq)
 
 ## Motivation
 
+Many industrial-grade programming languages feature non-local control
+flow abstractions such as async/await (C#/F#/JavaScript/Rust/Scala),
+coroutines (C++/Go/Smalltalk), generators/iterators
+(C#/F#/Haskell/JavaScript/Racket/Python), effect handlers (OCaml),
+call/cc (Racket), and so forth. Currently, Wasm lacks support for
+implementing such control flow abstractions efficiently, since Wasm
+does not provide any primitives for manipulating segments of the
+execution stack. One possible approach is to add special support for
+each of the aforementioned control abstractions, though, what about
+the next 700 control abstractions? Adding individual support is not a
+sustainable strategy as it does not scale. Instead, the goal of this
+proposal is to introduce a general structured mechanism, which enables
+the aforementioned and the next 700 control abstractions to be
+implemented efficiently. Specifically, the idea is to provide an
+interface for structured manipulation of the execution stack via
+*typed delimited continuations*.
+<!-- TODO mention highly scalable concurrency a la Erlang as a use case -->
+
+Intuitively, a delimited continuation represents a segment of the
+execution stack...
+
 ## Additional Requirements
+
+ * **No GC dependency**: We intend every host to be able to use typed
+   continuations implement their non-local flow abstractions
+   irrespective of whether their memory is managed by a GC. Thus this
+   proposal must not depend on a full-blown GC, rather, reference
+   counting or a similar technique must be sufficient in cases where
+   some form of memory management is necessary.
 
 ## Proposal
 
+### Event operations
+
+```wat
+(event $label (param tp*) (result tr*))
+```
+
 ### Stack Creation
+
+```wat
+(cont $ft)
+cont.new : [(ref ([t1*] -> [t2*])] -> [(cont ([t1*] -> [t2*]))]
+
+```
 
 ### Stack Suspension
 
+```wat
+cont.suspend $label : [tp*] -> [tr*]
+
+```
+
 ### Stack Resumption
+
+```wat
+cont.resume (event $label $handler)* : [tr*] -> [t1*]
+```
 
 ## Examples
 
