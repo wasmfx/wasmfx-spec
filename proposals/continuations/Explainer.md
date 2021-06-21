@@ -77,7 +77,7 @@ it has a result type. Operationally, an event operation may be thought
 of as a *resumable* exception.
 
 ```wat
-(event $label (param tp*) (result tr*))
+event $label (param tp*) (result tr*)
 ```
 
 The `$label` is the name of the operation. The parameter types `tp*`
@@ -102,9 +102,27 @@ cont.suspend $label : [tp*] -> [tr*]
 
 ### Resuming Continuations
 
+There are three ways to resume a continuation.
+
 ```wat
 cont.resume (event $label $handler)* : [tr*] -> [t1*]
 ```
+
+```wat
+cont.throw (exception $exn) : [tp* (cont $ft)] -> [t1*]
+```
+
+The third way does not resume the continuation *per see*, rather, it
+provides a way to partially apply a continuation to some of its
+arguments.
+
+```wat
+cont.bind $ct : [tp* (cont ([tp* tp'*] -> [t1*]))] -> [(cont ([tp'*] -> [t1*]))]
+```
+
+The `cont.bind` primitive binds the arguments of type `tp*` to the
+continuation `$ct`, yielding a modified continuation object which
+expects fewer arguments.
 
 ## Examples
 
