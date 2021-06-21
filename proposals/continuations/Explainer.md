@@ -9,9 +9,10 @@ for structured non-local control flow.
 1. [Motivation](#motivation)
 2. [Additional Requirements](#additional-requirements)
 3. [Proposal](#proposal)
-   1. [Creating Continuations](#creating-continuations)
-   2. [Suspending Continuations](#suspending-continuations)
-   3. [Resuming Continuations](#resuming-continuations)
+   1. [Declaring Event Operations](#declaring-event-operations)
+   2. [Creating Continuations](#creating-continuations)
+   3. [Suspending Continuations](#suspending-continuations)
+   4. [Resuming Continuations](#resuming-continuations)
 4. [Examples](#examples)
 5. [FAQ](#faq)
 
@@ -69,13 +70,13 @@ interface for structured manipulation of the execution stack via
 
 ## Proposal
 
-### Event operations
+### Declaring Event Operations
 
 ```wat
 (event $label (param tp*) (result tr*))
 ```
 
-### Stack Creation
+### Creating Continuations
 
 ```wat
 (cont $ft)
@@ -83,14 +84,14 @@ cont.new : [(ref ([t1*] -> [t2*])] -> [(cont ([t1*] -> [t2*]))]
 
 ```
 
-### Stack Suspension
+### Suspending Continuations
 
 ```wat
 cont.suspend $label : [tp*] -> [tr*]
 
 ```
 
-### Stack Resumption
+### Resuming Continuations
 
 ```wat
 cont.resume (event $label $handler)* : [tr*] -> [t1*]
