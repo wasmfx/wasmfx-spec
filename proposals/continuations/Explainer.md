@@ -730,3 +730,13 @@ The output is as follows, demonstrating the various different scheduling behavio
 ### Delimited continuations (TODO)
 
 ## FAQ
+
+### Shift/reset or control/prompt as an alternative basis
+TODO
+
+### Tail-resumptive handlers
+TODO
+
+### Multi-shot continuations
+TODO
+
