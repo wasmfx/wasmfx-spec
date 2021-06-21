@@ -74,6 +74,10 @@ interface for structured manipulation of the execution stack via
 
  * **Debugging friendliness**: The proposal must not obstruct backtraces... TODO
 
+ * **JS Promises compatibility**: TODO
+
+ * **Preserve invariants of legacy code**: TODO
+
 ## Proposal
 
 The proposal adds a new reference type for continuations.
