@@ -72,9 +72,18 @@ interface for structured manipulation of the execution stack via
 
 ### Declaring Event Operations
 
+An event operation is similar to an exception with the addition that
+it has a result type. Operationally, an event operation may be thought
+of as a *resumable* exception.
+
 ```wat
 (event $label (param tp*) (result tr*))
 ```
+
+The `$label` is the name of the operation. The parameter types `tp*`
+describes the expected stack layout prior to invoking the operation,
+and the result types `tr*` describes the stack layout following an
+invocation of the operation.
 
 ### Creating Continuations
 
