@@ -27,7 +27,7 @@ concurrency. Currently, Wasm lacks support for implementing these
 abstractions directly and efficiently without a circuitous global
 transformation of source programs on the producer side.  One possible
 strategy is to add special support for each of the aforementioned
-non-local control flow abstraction to Wasm, however, this strategy is
+non-local control flow abstractions to Wasm, however, this strategy is
 not sustainable as it does not scale to the next 700 non-local control
 flow abstractions. Instead, the goal of this proposal is to introduce
 a structured unified mechanism, which is sufficiently general to cover
