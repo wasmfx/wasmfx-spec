@@ -153,16 +153,31 @@ arguments.
 cont.bind $ct : [tp* (cont ([tp* tp'*] -> [t2*]))] -> [(cont ([tp'*] -> [t2*]))]
 ```
 
-The `cont.bind` primitive binds the arguments of type `tp*` to the
+The instruction `cont.bind` binds the arguments of type `tp*` to the
 continuation `$ct`, yielding a modified continuation object which
-expects fewer arguments.
+expects fewer arguments. As with the two previous instructions, this
+instruction does also consume its continuation object argument,
+though, in contrast to the other two it produces a new continuation
+object that can be supplied to either `cont.{resume,throw,bind}`.
 
 ### Suspending Continuations
+
+A computation running inside a continuation object can suspend itself
+by invoking one of the declared control events.
+
 
 ```wat
 cont.suspend $label : [tp*] -> [tr*]
 
 ```
+
+The instruction `cont.suspend` invokes the control event named
+`$label` with arguments of types `tp*`. Operationally, the instruction
+transfers control out of the continuation object to nearest enclosing
+handler for `$label`. This is similar to how raising an exception
+transfers control to the nearest suitable exception handler. The
+crucial difference is the residual computation at the suspension point
+expects to resumed later with arguments of types `tr*`.
 
 ## Examples
 
