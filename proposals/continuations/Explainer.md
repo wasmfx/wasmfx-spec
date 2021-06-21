@@ -72,6 +72,8 @@ interface for structured manipulation of the execution stack via
    counting or a similar technique must be sufficient in cases where
    some form of memory management is necessary.
 
+ * **Debugging friendliness**: The proposal must not obstruct backtraces... TODO
+
 ## Proposal
 
 The proposal adds a new reference type for continuations.
@@ -738,5 +740,8 @@ TODO
 TODO
 
 ### Multi-shot continuations
+TODO
+
+### Named control event dispatch
 TODO
 
