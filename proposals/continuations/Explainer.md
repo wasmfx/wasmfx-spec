@@ -11,8 +11,8 @@ for structured non-local control flow.
 3. [Proposal](#proposal)
    1. [Declaring Event Operations](#declaring-event-operations)
    2. [Creating Continuations](#creating-continuations)
-   3. [Suspending Continuations](#suspending-continuations)
-   4. [Resuming Continuations](#resuming-continuations)
+   3. [Resuming Continuations](#resuming-continuations)
+   4. [Suspending Continuations](#suspending-continuations)
 4. [Examples](#examples)
 5. [FAQ](#faq)
 
@@ -70,6 +70,17 @@ interface for structured manipulation of the execution stack via
 
 ## Proposal
 
+The proposal adds a new reference type for continuations.
+
+```wat
+(cont ([t1*] -> [t2*]))
+```
+
+The continuation type is indexed by a function type, where `t1*`
+describes the expected stack shape prior to resuming/starting the
+continuation, and `t2*` describes the stack shape after the
+continuation has run to completion.
+
 ### Declaring Event Operations
 
 An event operation is similar to an exception with the addition that
@@ -87,16 +98,10 @@ invocation of the operation.
 
 ### Creating Continuations
 
+
+
 ```wat
-(cont $ft)
 cont.new : [(ref ([t1*] -> [t2*])] -> [(cont ([t1*] -> [t2*]))]
-
-```
-
-### Suspending Continuations
-
-```wat
-cont.suspend $label : [tp*] -> [tr*]
 
 ```
 
@@ -123,6 +128,13 @@ cont.bind $ct : [tp* (cont ([tp* tp'*] -> [t1*]))] -> [(cont ([tp'*] -> [t1*]))]
 The `cont.bind` primitive binds the arguments of type `tp*` to the
 continuation `$ct`, yielding a modified continuation object which
 expects fewer arguments.
+
+### Suspending Continuations
+
+```wat
+cont.suspend $label : [tp*] -> [tr*]
+
+```
 
 ## Examples
 
