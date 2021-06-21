@@ -323,7 +323,7 @@ corresponding continuation reference.
 (invoke "run")
 ```
 
-The threads are interleaved as expected, and the output is as follows.
+The output is as follows.
 ```
 -1 : i32
 10 : i32
@@ -337,6 +337,7 @@ The threads are interleaved as expected, and the output is as follows.
 32 : i32
 -2 : i32
 ```
+The threads are interleaved as expected.
 
 ### Lightweight threads (dynamic)
 
@@ -473,6 +474,25 @@ there will be two continuations on the stack when suspending with the
 `$fork` event: the first is the parameter passed to fork (the new
 thread) and the second is the continuation of the currently executing
 thread.
+
+Running the synchronous scheduler on the example produces the following output.
+```
+0 : i32
+1 : i32
+2 : i32
+3 : i32
+10 : i32
+11 : i32
+12 : i32
+20 : i32
+21 : i32
+22 : i32
+30 : i32
+31 : i32
+32 : i32
+```
+First the main thread runs to completion, then each of the forked
+threads in sequence.
 
 Following a similar pattern, we define four different asynchronous
 schedulers.
@@ -702,5 +722,11 @@ The output is as follows, demonstrating the various different scheduling behavio
 32 : i32
 -6 : i32
 ```
+
+### Actors (TODO)
+
+### Async/await (TODO)
+
+### Delimited continuations (TODO)
 
 ## FAQ
