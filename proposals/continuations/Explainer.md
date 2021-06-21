@@ -38,8 +38,12 @@ to a low-level variation of Plotkin and Pretnar's *effect handlers*.
 
 ### Typed Continuation Primer
 
-Intuitively, a delimited continuation represents a segment of the
-execution stack...
+TODO
+* Introduce the concept of delimited continuations
+* Control events (aka. effectful operations)
+* Invocation of control events
+* Abortion of suspended computations
+* Linearity constraint
 
 <!-- Many industrial-grade programming languages feature non-local control
 flow abstractions such as async/await (C#/F#/JavaScript/Rust/Scala),
