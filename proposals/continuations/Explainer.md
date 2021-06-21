@@ -9,7 +9,7 @@ for structured non-local control flow.
 1. [Motivation](#motivation)
 2. [Additional Requirements](#additional-requirements)
 3. [Proposal](#proposal)
-   1. [Declaring Event Operations](#declaring-event-operations)
+   1. [Declaring Control Events](#declaring-control-events)
    2. [Creating Continuations](#creating-continuations)
    3. [Resuming Continuations](#resuming-continuations)
    4. [Suspending Continuations](#suspending-continuations)
@@ -81,48 +81,76 @@ describes the expected stack shape prior to resuming/starting the
 continuation, and `t2*` describes the stack shape after the
 continuation has run to completion.
 
-### Declaring Event Operations
+### Declaring Control Events
 
-An event operation is similar to an exception with the addition that
-it has a result type. Operationally, an event operation may be thought
-of as a *resumable* exception.
+A control event is similar to an exception with the addition that it
+has a result type. Operationally, a control event may be thought of as
+a *resumable* exception. An event declaration provides the type
+signature of a control event.
 
 ```wat
-event $label (param tp*) (result tr*)
+(event $label (param tp*) (result tr*))
 ```
 
 The `$label` is the name of the operation. The parameter types `tp*`
-describes the expected stack layout prior to invoking the operation,
+describes the expected stack layout prior to invoking the event,
 and the result types `tr*` describes the stack layout following an
 invocation of the operation.
 
 ### Creating Continuations
 
-
+The following instruction creates a continuation object in *suspended
+state* from a function.
 
 ```wat
 cont.new : [(ref ([t1*] -> [t2*])] -> [(cont ([t1*] -> [t2*]))]
 
 ```
 
+The instruction expects the top of the stack to contain a reference to
+a function of type `[t1*] -> [t2*]`. This function embodies a
+computation that may perform non-local control flow transfers.
+
+
 ### Resuming Continuations
 
-There are three ways to resume a continuation.
+There are three ways to resume (or start) a continuation object. The
+first way resumes a continuation under a named *handler*, which handles
+subsequent control suspensions within the continuation.
 
 ```wat
-cont.resume (event $label $handler)* : [tr*] -> [t1*]
+cont.resume (event $label $handler)* : [tr* (cont ([tr*] -> [t2*]))] -> [t2*]
 ```
 
+The `cont.resume` instruction is parameterised by a collection of
+*event clauses*, which maps control event names to their respective
+handlers in the residual computation of the continuation object. The
+instruction `cont.resume` fully consumes its continuation argument,
+meaning a continuation object can only be used once.
+
+The second way to resume a continuation object is to raise an
+exception at the control event invocation site. This effectively
+amounts to performing "an abortive action" which causes the stack to
+be unwound.
+
+
 ```wat
-cont.throw (exception $exn) : [tp* (cont $ft)] -> [t1*]
+cont.throw (exception $exn) : [tp* (cont $ft)] -> [t2*]
 ```
+
+The instruction `cont.throw` is parameterised by the exception to be
+raised at the control event invocation site. As with `cont.resume`,
+this instruction also fully consumes its continuation object
+argument. Operationally, this instruction injects the exception `$exn`
+with parameters of type `tp*` at the control event invocation point in
+the residual computation of the provided continuation object.
 
 The third way does not resume the continuation *per see*, rather, it
 provides a way to partially apply a continuation to some of its
 arguments.
 
 ```wat
-cont.bind $ct : [tp* (cont ([tp* tp'*] -> [t1*]))] -> [(cont ([tp'*] -> [t1*]))]
+cont.bind $ct : [tp* (cont ([tp* tp'*] -> [t2*]))] -> [(cont ([tp'*] -> [t2*]))]
 ```
 
 The `cont.bind` primitive binds the arguments of type `tp*` to the
