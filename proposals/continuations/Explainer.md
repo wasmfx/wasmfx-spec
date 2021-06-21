@@ -264,10 +264,10 @@ handler `(event $yield $on_yield)` specifies that the `$yield` event
 is handled by running the code immediately following the block
 labelled with `$on_yield`, the `$on_yield` clause. The result of the
 block `(result (ref $cont))` declares that there will be a
-continuation on the stack when suspending with the `$yield`
-event. This continuation represents the remainder of the currently
-executing thread. The `$on_yield` clause enqueues this continuation
-and proceeds to the next iteration of the loop.
+continuation on the stack when suspending with the `$yield` event,
+which is the continuation of the currently executing thread. The
+`$on_yield` clause enqueues this continuation and proceeds to the next
+iteration of the loop.
 
 In order to interleave our three test threads together, we create a
 new continuation for each, enqueue the continuations, and invoke the
@@ -321,8 +321,367 @@ The threads are interleaved as expected, and the output is as follows.
 
 ### Lightweight threads (dynamic)
 
-We can make our lightweight threads functionality considerably more
-expressive by allowing new threads to be dynamically forked...
+(The full code for this example is [here](examples/lwt.wast).)
 
+We can make our lightweight threads functionality considerably more
+expressive by allowing new threads to be forked dynamically.
+
+```wasm
+(module $lwt
+  (type $func (func))
+  (type $cont (cont $func))
+
+  (event $yield (export "yield"))
+  (event $fork (export "fork") (param (ref $cont)))
+)
+(register "lwt")
+```
+
+We declare a new `$fork` event that takes a continuation as a
+parameter and (like `$yield`) returns no result. Now we modify our
+example to fork each of the three threads from a single main thread.
+
+```wasm
+(module $example
+  (type $func (func))
+  (type $cont (cont $func))
+
+  (event $yield (import "lwt" "yield"))
+  (event $fork (import "lwt" "fork") (param (ref $cont)))
+
+  (func $log (import "spectest" "print_i32") (param i32))
+
+  (elem declare func $thread1 $thread2 $thread3)
+
+  (func $main (export "main")
+    (call $log (i32.const 0))
+    (suspend $fork (cont.new (type $cont) (ref.func $thread1)))
+    (call $log (i32.const 1))
+    (suspend $fork (cont.new (type $cont) (ref.func $thread2)))
+    (call $log (i32.const 2))
+    (suspend $fork (cont.new (type $cont) (ref.func $thread3)))
+    (call $log (i32.const 3))
+  )
+
+  (func $thread1
+    (call $log (i32.const 10))
+    (suspend $yield)
+    (call $log (i32.const 11))
+    (suspend $yield)
+    (call $log (i32.const 12))
+  )
+
+  (func $thread2
+    (call $log (i32.const 20))
+    (suspend $yield)
+    (call $log (i32.const 21))
+    (suspend $yield)
+    (call $log (i32.const 22))
+  )
+
+  (func $thread3
+    (call $log (i32.const 30))
+    (suspend $yield)
+    (call $log (i32.const 31))
+    (suspend $yield)
+    (call $log (i32.const 32))
+  )
+)
+(register "example")
+```
+
+As with the static example we define a scheduler module.
+```wasm
+(module $scheduler
+  (type $func (func))
+  (type $cont (cont $func))
+
+  (event $yield (import "lwt" "yield"))
+  (event $fork (import "lwt" "fork") (param (ref $cont)))
+
+  (func $queue-empty (import "queue" "queue-empty") (result i32))
+  (func $dequeue (import "queue" "dequeue") (result (ref null $cont)))
+  (func $enqueue (import "queue" "enqueue") (param $k (ref null $cont)))
+  ...
+)
+(register "scheduler")
+```
+
+In this example we illustrate five different schedulers. First, we
+write a baseline synchronous scheduler which simply runs the current
+thread to completion without actually yielding.
+
+```wasm
+  (func $sync (export "sync") (param $nextk (ref null $cont))
+    (loop $l
+      (if (ref.is_null (local.get $nextk)) (then (return)))
+      (block $on_yield (result (ref $cont))
+        (block $on_fork (result (ref $cont) (ref $cont))
+          (resume (event $yield $on_yield)
+                  (event $fork $on_fork)
+                  (local.get $nextk)
+          )
+          (local.set $nextk (call $dequeue))
+          (br $l)  ;; thread terminated
+        ) ;;   $on_fork (result (ref $cont) (ref $cont))
+        (local.set $nextk)                      ;; current thread
+        (call $enqueue) ;; new thread
+        (br $l)
+      )
+      ;;     $on_yield (result (ref $cont))
+      (local.set $nextk)  ;; carry on with current thread
+      (br $l)
+    )
+  )
+```
+
+The `$nextk` parameter represents the continuation of the next
+thread. The loop is repeatedly executed until `$nextk` is null
+(meaning that all threads have finished). The body of the loop is the
+code inside the two nested blocks. It resumes the next continuation,
+dequeues the next continuation, and then continues to the next
+iteration of the loop. The handler passed to `resume` specifies how to
+handle both `$yield` and `$fork` events. Yielding carries on executing
+the current thread (this scheduler is synchronous). Forking enqueues
+the new thread and continues executing the current thread.
+
+As with the static example, the result of the `$on_yield` block
+`(result (ref $cont))` declares that there will be a continuation on
+the stack when suspending with the `$yield` event, which is the
+continuation of the currently executing thread. The result of the
+`$on_fork` block `(result (ref $cont) (ref $cont))` declares that
+there will be two continuations on the stack when suspending with the
+`$fork` event: the first is the parameter passed to fork (the new
+thread) and the second is the continuation of the currently executing
+thread.
+
+Following a similar pattern, we define four different asynchronous
+schedulers.
+
+```wasm
+  ;; four asynchronous schedulers:
+  ;;   * kt and tk don't yield on encountering a fork
+  ;;     1) kt runs the continuation, queuing up the new thread for later
+  ;;     2) tk runs the new thread first, queuing up the continuation for later
+  ;;   * ykt and ytk do yield on encountering a fork
+  ;;     3) ykt runs the continuation, queuing up the new thread for later
+  ;;     4) ytk runs the new thread first, queuing up the continuation for later
+
+  ;; no yield on fork, continuation first
+  (func $kt (export "kt") (param $nextk (ref null $cont))
+    (loop $l
+      (if (ref.is_null (local.get $nextk)) (then (return)))
+      (block $on_yield (result (ref $cont))
+        (block $on_fork (result (ref $cont) (ref $cont))
+          (resume (event $yield $on_yield)
+                  (event $fork $on_fork)
+                  (local.get $nextk)
+          )
+          (local.set $nextk (call $dequeue))
+          (br $l)  ;; thread terminated
+        ) ;;   $on_fork (result (ref $cont) (ref $cont))
+        (local.set $nextk)                      ;; current thread
+        (call $enqueue) ;; new thread
+        (br $l)
+      )
+      ;;     $on_yield (result (ref $cont))
+      (call $enqueue)                    ;; current thread
+      (local.set $nextk (call $dequeue)) ;; next thread
+      (br $l)
+    )
+  )
+
+  ;; no yield on fork, new thread first
+  (func $tk (export "tk") (param $nextk (ref null $cont))
+    (loop $l
+      (if (ref.is_null (local.get $nextk)) (then (return)))
+      (block $on_yield (result (ref $cont))
+        (block $on_fork (result (ref $cont) (ref $cont))
+          (resume (event $yield $on_yield)
+                  (event $fork $on_fork)
+                  (local.get $nextk)
+          )
+          (local.set $nextk (call $dequeue))
+          (br $l)  ;; thread terminated
+        ) ;;   $on_fork (result (ref $cont) (ref $cont))
+        (call $enqueue)                            ;; current thread
+        (local.set $nextk) ;; new thread
+        (br $l)
+      )
+      ;;     $on_yield (result (ref $cont))
+      (call $enqueue)                    ;; current thread
+      (local.set $nextk (call $dequeue)) ;; next thread
+      (br $l)
+    )
+  )
+
+  ;; yield on fork, continuation first
+  (func $ykt (export "ykt") (param $nextk (ref null $cont))
+    (loop $l
+      (if (ref.is_null (local.get $nextk)) (then (return)))
+      (block $on_yield (result (ref $cont))
+        (block $on_fork (result (ref $cont) (ref $cont))
+          (resume (event $yield $on_yield)
+                  (event $fork $on_fork)
+                  (local.get $nextk)
+          )
+          (local.set $nextk (call $dequeue))
+          (br $l)  ;; thread terminated
+        ) ;;   $on_fork (result (ref $cont) (ref $cont))
+        (call $enqueue)                         ;; current thread
+        (call $enqueue) ;; new thread
+        (local.set $nextk (call $dequeue))      ;; next thread
+        (br $l)
+      )
+      ;;     $on_yield (result (ref $cont))
+      (call $enqueue)                    ;; current thread
+      (local.set $nextk (call $dequeue)) ;; next thread
+      (br $l)
+    )
+  )
+
+  ;; yield on fork, new thread first
+  (func $ytk (export "ytk") (param $nextk (ref null $cont))
+    (loop $l
+      (if (ref.is_null (local.get $nextk)) (then (return)))
+      (block $on_yield (result (ref $cont))
+        (block $on_fork (result (ref $cont) (ref $cont))
+          (resume (event $yield $on_yield)
+                  (event $fork $on_fork)
+                  (local.get $nextk)
+          )
+          (local.set $nextk (call $dequeue))
+          (br $l)  ;; thread terminated
+        ) ;;   $on_fork (result (ref $cont) (ref $cont))
+        (local.set $nextk)
+        (call $enqueue) ;; new thread
+        (call $enqueue (local.get $nextk))      ;; current thread
+        (local.set $nextk (call $dequeue))      ;; next thread
+        (br $l)
+      )
+      ;;     $on_yield (result (ref $cont))
+      (call $enqueue)                    ;; current thread
+      (local.set $nextk (call $dequeue)) ;; next thread
+      (br $l)
+    )
+  )
+```
+
+Each `$on_yield` clause is identical, enqueing the continuation of the
+current thread and dequeing the next continuation for the thread. The
+`$on_fork` clauses implement different behaviours for scheduling the
+current and newly forked threads.
+
+We run our example using each of the five schedulers.
+
+```wasm
+(module
+  (type $func (func))
+  (type $cont (cont $func))
+
+  (func $scheduler1 (import "scheduler" "sync") (param $nextk (ref null $cont)))
+  (func $scheduler2 (import "scheduler" "kt") (param $nextk (ref null $cont)))
+  (func $scheduler3 (import "scheduler" "tk") (param $nextk (ref null $cont)))
+  (func $scheduler4 (import "scheduler" "ykt") (param $nextk (ref null $cont)))
+  (func $scheduler5 (import "scheduler" "ytk") (param $nextk (ref null $cont)))
+
+  (func $log (import "spectest" "print_i32") (param i32))
+
+  (func $main (import "example" "main"))
+
+  (elem declare func $main)
+
+  (func (export "run")
+    (call $log (i32.const -1))
+    (call $scheduler1 (cont.new (type $cont) (ref.func $main)))
+    (call $log (i32.const -2))
+    (call $scheduler2 (cont.new (type $cont) (ref.func $main)))
+    (call $log (i32.const -3))
+    (call $scheduler3 (cont.new (type $cont) (ref.func $main)))
+    (call $log (i32.const -4))
+    (call $scheduler4 (cont.new (type $cont) (ref.func $main)))
+    (call $log (i32.const -5))
+    (call $scheduler5 (cont.new (type $cont) (ref.func $main)))
+    (call $log (i32.const -6))
+  )
+)
+
+(invoke "run")
+```
+
+The output is as follows, demonstrating the various different scheduling behaviours.
+```
+-1 : i32
+0 : i32
+1 : i32
+2 : i32
+3 : i32
+10 : i32
+11 : i32
+12 : i32
+20 : i32
+21 : i32
+22 : i32
+30 : i32
+31 : i32
+32 : i32
+-2 : i32
+0 : i32
+1 : i32
+2 : i32
+3 : i32
+10 : i32
+20 : i32
+30 : i32
+11 : i32
+21 : i32
+31 : i32
+12 : i32
+22 : i32
+32 : i32
+-3 : i32
+0 : i32
+10 : i32
+1 : i32
+20 : i32
+11 : i32
+2 : i32
+30 : i32
+21 : i32
+12 : i32
+3 : i32
+31 : i32
+22 : i32
+32 : i32
+-4 : i32
+0 : i32
+1 : i32
+10 : i32
+2 : i32
+20 : i32
+11 : i32
+3 : i32
+30 : i32
+21 : i32
+12 : i32
+31 : i32
+22 : i32
+32 : i32
+-5 : i32
+0 : i32
+10 : i32
+1 : i32
+11 : i32
+20 : i32
+2 : i32
+12 : i32
+21 : i32
+30 : i32
+3 : i32
+22 : i32
+31 : i32
+32 : i32
+-6 : i32
+```
 
 ## FAQ
