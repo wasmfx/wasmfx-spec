@@ -1,23 +1,46 @@
-# Typed Continuations as the Basis for Stack Switching
+# Typed Continuations as a Structured Basis for Non-Local Control Flow
 
-This explainer document introduces the typed continuations as the
-basis for stack switching, which adds a general mechanism for
-non-local control flow manipulation to WebAssembly modules.
+This explainer document provides an informal presentation of the
+*typed continuations* proposal, which is a minimal extension to Wasm
+for structured non-local control flow.
 
 ## Table of contents
 
 1. [Motivation](#motivation)
 2. [Additional Requirements](#additional-requirements)
 3. [Proposal](#proposal)
-   1. [Stack Creation](#stack-creation)
-   2. [Stack Suspension](#stack-suspension)
-   3. [Stack Resumption](#stack-resumption)
+   1. [Creating Continuations](#creating-continuations)
+   2. [Suspending Continuations](#suspending-continuations)
+   3. [Resuming Continuations](#resuming-continuations)
 4. [Examples](#examples)
 5. [FAQ](#faq)
 
 ## Motivation
 
-Many industrial-grade programming languages feature non-local control
+Industrial-strength programming languages feature a wealth of
+non-local control flow abstractions such as async/await, coroutines,
+generators/iterators, effect handlers, call/cc, and so forth. The
+identity of some programming languages depends on non-local control
+flow for efficiency, e.g. to support highly scalable
+concurrency. Currently, Wasm lacks support for implementing these
+abstractions directly and efficiently without a circuitous global
+transformation of source programs on the producer side.  One possible
+strategy is to add special support for each of the aforementioned
+non-local control flow abstraction to Wasm, however, this strategy is
+not sustainable as it does not scale to the next 700 non-local control
+flow abstractions. Instead, the goal of this proposal is to introduce
+a structured unified mechanism, which is sufficiently general to cover
+the present use-cases as well as being compatible with future
+use-cases, whilst admitting efficient implementations.  The proposed
+mechanism is dubbed *typed continuations*, which essentially amounts
+to a low-level variation of Plotkin and Pretnar's *effect handlers*.
+
+### Typed Continuation Primer
+
+Intuitively, a delimited continuation represents a segment of the
+execution stack...
+
+<!-- Many industrial-grade programming languages feature non-local control
 flow abstractions such as async/await (C#/F#/JavaScript/Rust/Scala),
 coroutines (C++/Go/Smalltalk), generators/iterators
 (C#/F#/Haskell/JavaScript/Racket/Python), effect handlers (OCaml),
@@ -32,11 +55,8 @@ proposal is to introduce a general structured mechanism, which enables
 the aforementioned and the next 700 control abstractions to be
 implemented efficiently. Specifically, the idea is to provide an
 interface for structured manipulation of the execution stack via
-*typed delimited continuations*.
+*typed delimited continuations*.-->
 <!-- TODO mention highly scalable concurrency a la Erlang as a use case -->
-
-Intuitively, a delimited continuation represents a segment of the
-execution stack...
 
 ## Additional Requirements
 
