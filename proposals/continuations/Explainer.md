@@ -35,19 +35,36 @@ strategy is to add special support for each of the aforementioned
 non-local control flow abstractions to Wasm, however, this strategy is
 not sustainable as it does not scale to the next 700 non-local control
 flow abstractions. Instead, the goal of this proposal is to introduce
-a structured unified mechanism, which is sufficiently general to cover
-the present use-cases as well as being compatible with future
+a structured unifying mechanism, which is sufficiently general to
+cover the present use-cases as well as being compatible with future
 use-cases, whilst admitting efficient implementations.  The proposed
 mechanism is dubbed *typed continuations*, which essentially amounts
 to a low-level variation of Plotkin and Pretnar's *effect handlers*.
 
-A *continuation* is a programmatic object that represents the
-remainder of computation from a certain point in time. Typed
+A *continuation* is a first-class programmatic object that represents
+the remainder of computation from a certain point in time. Typed
 continuations is based on a structured notion of delimited
 continuations. A *delimited continuation* is a continuation whose
 extent is delimited by some *control delimiter*, meaning it represents
 the remainder of computation from a certain point in time up to (and
-possibly including) its control delimiter.
+possibly including) its control delimiter. The alternative to
+delimited continuations is undelimited continuations, which represents
+the remainder of the *entire* program. Between the two notions
+delimited continuations are favourable as they are more fine-grain in
+the sense that they provide a means for suspending local execution
+contexts rather than the entire global execution context. In
+particular, delimited continuations are more expressive, since a
+undelimited continuation can be viewed as delimited continuation whose
+control delimiter is placed at the start of the program.
+
+The crucial feature of our typed continuations that make them more
+structured than conventional delimited continuations is the addition
+of *control tags*. A control tag is a typed symbolic entity that
+suspends the current execution context and reifies it as a
+continuation object up to its control delimiter. The type of a control
+tag communicates the type of its payload as well as its expected
+return type, i.e. the type of data that must be supplied to its
+associated continuation upon resumption.
 
 ### Typed Continuation Primer
 
