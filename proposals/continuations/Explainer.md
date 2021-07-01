@@ -109,7 +109,11 @@ interface for structured manipulation of the execution stack via
 
  * **JS Promises compatibility**: TODO
 
- * **Preserve invariants of legacy code**: 
+ * **Preserve Wasm invariants of legacy code**: The proposal must
+   preserve backwards compatibility with existing Wasm code. In
+   particular, this means that the presence of typed continuations
+   must not break invariants of existing code, e.g. code that expects
+   to be executed once must not suddenly be executed twice.
 
 ## Proposal
 
