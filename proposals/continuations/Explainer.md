@@ -64,7 +64,13 @@ suspends the current execution context and reifies it as a
 continuation object up to its control delimiter. The type of a control
 tag communicates the type of its payload as well as its expected
 return type, i.e. the type of data that must be supplied to its
-associated continuation upon resumption.
+associated continuation upon resumption. In other words, control tags
+define an *interface* for constructing continuation objects. A second
+feature that adds more structure is that the construction of
+continuation objects is kept separate from the *handling* of
+continuation objects. A continuation object is handled at the
+delimiter of a control tag rather than at the invocation site of the
+control tag.
 
 ### Typed Continuation Primer
 
