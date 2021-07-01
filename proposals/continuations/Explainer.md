@@ -136,17 +136,17 @@ continuation has run to completion.
 
 ### Declaring Control Tags
 
-A control event is similar to an exception with the addition that it
-has a result type. Operationally, a control event may be thought of as
-a *resumable* exception. An event declaration provides the type
-signature of a control event.
+A control tag is similar to an exception with the addition that it
+has a result type. Operationally, a control tag may be thought of as
+a *resumable* exception. A tag declaration provides the type
+signature of a control tag.
 
 ```wat
 (event $label (param tp*) (result tr*))
 ```
 
 The `$label` is the name of the operation. The parameter types `tp*`
-describes the expected stack layout prior to invoking the event,
+describes the expected stack layout prior to invoking the tag,
 and the result types `tr*` describes the stack layout following an
 invocation of the operation.
 
@@ -176,13 +176,13 @@ cont.resume (event $label $handler)* : [tr* (cont ([tr*] -> [t2*]))] -> [t2*]
 ```
 
 The `cont.resume` instruction is parameterised by a collection of
-*event clauses*, which maps control event names to their respective
+*tag clauses*, which maps control tag names to their respective
 handlers in the residual computation of the continuation object. The
 instruction `cont.resume` fully consumes its continuation argument,
 meaning a continuation object can only be used once.
 
 The second way to resume a continuation object is to raise an
-exception at the control event invocation site. This effectively
+exception at the control tag invocation site. This effectively
 amounts to performing "an abortive action" which causes the stack to
 be unwound.
 
@@ -192,10 +192,10 @@ cont.throw (exception $exn) : [tp* (cont $ft)] -> [t2*]
 ```
 
 The instruction `cont.throw` is parameterised by the exception to be
-raised at the control event invocation site. As with `cont.resume`,
+raised at the control tag invocation site. As with `cont.resume`,
 this instruction also fully consumes its continuation object
 argument. Operationally, this instruction injects the exception `$exn`
-with parameters of type `tp*` at the control event invocation point in
+with parameters of type `tp*` at the control tag invocation point in
 the residual computation of the provided continuation object.
 
 The third way does not resume the continuation *per see*, rather, it
@@ -224,7 +224,7 @@ cont.suspend $label : [tp*] -> [tr*]
 
 ```
 
-The instruction `cont.suspend` invokes the control event named
+The instruction `cont.suspend` invokes the control tag named
 `$label` with arguments of types `tp*`. Operationally, the instruction
 transfers control out of the continuation object to nearest enclosing
 handler for `$label`. This is similar to how raising an exception
@@ -240,7 +240,7 @@ expects to resumed later with arguments of types `tr*`.
 
 Lightweight threads are one of the primary use-cases for typed
 continuations. In their most basic *static* form we assume a fixed
-collection of cooperative threads with a single event that allows a
+collection of cooperative threads with a single tag that allows a
 thread to signal that it is willing to yield.
 
 ```wasm
@@ -250,7 +250,7 @@ thread to signal that it is willing to yield.
 (register "lwt")
 ```
 
-The `$yield` event takes no parameter and has no result. Having
+The `$yield` tag takes no parameter and has no result. Having
 declared it, we can now write some cooperative threads as functions.
 
 ```wasm
@@ -291,7 +291,7 @@ execution to a scheduler which will perform a context switch.
 
 If we were to try to run any of these functions at the top-level then
 they would trap as soon as they try to suspend with the `$yield$`
-event, because we have not yet specified how to handle it.
+tag, because we have not yet specified how to handle it.
 
 We now define a scheduler.
 
@@ -327,12 +327,12 @@ We now define a scheduler.
 We assume a suitable interface to a queue of active threads
 represented as continuations. The scheduler is a loop which repeatedly
 runs the continuation (thread) at the head of the queue. It does so by
-resuming the continuation with a handler for the `$yield` event. The
-handler `(event $yield $on_yield)` specifies that the `$yield` event
+resuming the continuation with a handler for the `$yield` tag. The
+handler `(event $yield $on_yield)` specifies that the `$yield` tag
 is handled by running the code immediately following the block
 labelled with `$on_yield`, the `$on_yield` clause. The result of the
 block `(result (ref $cont))` declares that there will be a
-continuation on the stack when suspending with the `$yield` event,
+continuation on the stack when suspending with the `$yield` tag,
 which is the continuation of the currently executing thread. The
 `$on_yield` clause enqueues this continuation and proceeds to the next
 iteration of the loop.
@@ -406,7 +406,7 @@ expressive by allowing new threads to be forked dynamically.
 (register "lwt")
 ```
 
-We declare a new `$fork` event that takes a continuation as a
+We declare a new `$fork` tag that takes a continuation as a
 parameter and (like `$yield`) returns no result. Now we modify our
 example to fork each of the three threads from a single main thread.
 
@@ -516,11 +516,11 @@ the new thread and continues executing the current thread.
 
 As with the static example, the result of the `$on_yield` block
 `(result (ref $cont))` declares that there will be a continuation on
-the stack when suspending with the `$yield` event, which is the
+the stack when suspending with the `$yield` tag, which is the
 continuation of the currently executing thread. The result of the
 `$on_fork` block `(result (ref $cont) (ref $cont))` declares that
 there will be two continuations on the stack when suspending with the
-`$fork` event: the first is the parameter passed to fork (the new
+`$fork` tag: the first is the parameter passed to fork (the new
 thread) and the second is the continuation of the currently executing
 thread.
 
@@ -838,6 +838,6 @@ TODO
 ### Multi-shot continuations
 TODO
 
-### Named control event dispatch
+### Named control tag dispatch
 TODO
 
