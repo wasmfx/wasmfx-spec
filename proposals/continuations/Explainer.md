@@ -9,20 +9,25 @@ for structured non-local control flow.
 1. [Motivation](#motivation)
 2. [Additional Requirements](#additional-requirements)
 3. [Proposal](#proposal)
-   1. [Declaring Control Events](#declaring-control-events)
+   1. [Declaring Control Tags](#declaring-control-tags)
    2. [Creating Continuations](#creating-continuations)
    3. [Resuming Continuations](#resuming-continuations)
    4. [Suspending Continuations](#suspending-continuations)
 4. [Examples](#examples)
-5. [FAQ](#faq)
+5. [Implementation strategies](#implementation-strategies)
+   1. [Segmented Stacks](#segmented-stacks)
+6. [FAQ](#faq)
 
 ## Motivation
 
-Industrial-strength programming languages feature a wealth of
-non-local control flow abstractions such as async/await, coroutines,
-generators/iterators, effect handlers, call/cc, and so forth. The
-identity of some programming languages depends on non-local control
-flow for efficiency, e.g. to support highly scalable
+Non-local control flow is a powerful means that endows the programmer
+with the ability to suspend the current execution context and later
+resume it. Many industrial-strength programming languages feature a
+wealth of non-local control flow abstractions such as async/await,
+coroutines, generators/iterators, effect handlers, call/cc, and so
+forth. For some programming languages non-local control flow is the
+embodiment of their identity, meaning they depend on non-local control
+flow for efficiency, e.g. to support massively scalable
 concurrency. Currently, Wasm lacks support for implementing these
 abstractions directly and efficiently without a circuitous global
 transformation of source programs on the producer side.  One possible
@@ -36,12 +41,20 @@ use-cases, whilst admitting efficient implementations.  The proposed
 mechanism is dubbed *typed continuations*, which essentially amounts
 to a low-level variation of Plotkin and Pretnar's *effect handlers*.
 
+A *continuation* is a programmatic object that represents the
+remainder of computation from a certain point in time. Typed
+continuations is based on a structured notion of delimited
+continuations. A *delimited continuation* is a continuation whose
+extent is delimited by some *control delimiter*, meaning it represents
+the remainder of computation from a certain point in time up to (and
+possibly including) its control delimiter.
+
 ### Typed Continuation Primer
 
 TODO
 * Introduce the concept of delimited continuations
-* Control events (aka. effectful operations)
-* Invocation of control events
+* Control tags (aka. effectful operations)
+* Invocation of control tags
 * Abortion of suspended computations
 * Linearity constraint
 
@@ -72,11 +85,14 @@ interface for structured manipulation of the execution stack via
    counting or a similar technique must be sufficient in cases where
    some form of memory management is necessary.
 
- * **Debugging friendliness**: The proposal must not obstruct backtraces... TODO
+ * **Debugging friendliness**: The addition of continuations must
+   preserve compatibility with standard debugging formats such as
+   DWARF, meaning it must be possible to obtain a sequential
+   unobstructed stack trace in the presence of continuations.
 
  * **JS Promises compatibility**: TODO
 
- * **Preserve invariants of legacy code**: TODO
+ * **Preserve invariants of legacy code**: 
 
 ## Proposal
 
@@ -91,7 +107,7 @@ describes the expected stack shape prior to resuming/starting the
 continuation, and `t2*` describes the stack shape after the
 continuation has run to completion.
 
-### Declaring Control Events
+### Declaring Control Tags
 
 A control event is similar to an exception with the addition that it
 has a result type. Operationally, a control event may be thought of as
@@ -173,7 +189,7 @@ object that can be supplied to either `cont.{resume,throw,bind}`.
 ### Suspending Continuations
 
 A computation running inside a continuation object can suspend itself
-by invoking one of the declared control events.
+by invoking one of the declared control tags.
 
 
 ```wat
@@ -467,7 +483,7 @@ thread. The loop is repeatedly executed until `$nextk` is null
 code inside the two nested blocks. It resumes the next continuation,
 dequeues the next continuation, and then continues to the next
 iteration of the loop. The handler passed to `resume` specifies how to
-handle both `$yield` and `$fork` events. Yielding carries on executing
+handle both `$yield` and `$fork` tags. Yielding carries on executing
 the current thread (this scheduler is synchronous). Forking enqueues
 the new thread and continues executing the current thread.
 
@@ -735,6 +751,55 @@ The output is as follows, demonstrating the various different scheduling behavio
 
 ### Delimited continuations (TODO)
 
+## Implementation strategies
+
+### Segmented Stacks
+```ioke
+   (stack 1)               (stack 2)              (stack 3)
+
+|-------------|
+| @prompt A   |
+|-------------|
+|             |
+| ...         |         (suspended)
+| resume ~~~~~~~~~~~~~> |-------------|
+| f(r)        |<<<      | @prompt B   |
+.             .         |-------------|
+.             .         |             |
+.             .         | ...         |
+                        | prompt <------------> |------------|
+                        .             .         | @prompt C  |
+                        .             .         |------------|
+                        .             .         | 1+         |
+                                                | []         |
+                                                .            .
+                                                .            .
+```
+
+Later we may want to resume the resumption `r` again with
+the result `42`: (`r(42)`)
+
+```ioke
+   (stack 1)              (stack 2)              (stack 3)
+
+|-------------|
+| @prompt A   |
+|-------------|
+|             |
+| ...         |         (suspended)
+| resume_t* r ~~~~~~~~> |-------------|
+|             |         | @prompt B   |
+| ...         |         |-------------|
+| resume(r,42)|<<<      |             |
+.             .         | ...         |
+.             .         | prompt <------------> |------------|
+.             .         .             .         | @prompt C  |
+                        .             .         |------------|
+                        .             .         | 1+         |
+                                                | []         |
+                                                .            .
+```
+<!-- figures thanks to Daan Leijen (https://github.com/koka-lang/libmprompt/edit/main/README.md) -->
 ## FAQ
 
 ### Shift/reset or control/prompt as an alternative basis
