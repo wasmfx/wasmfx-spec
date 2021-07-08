@@ -1,8 +1,14 @@
 # Typed Continuations as a Structured Basis for Non-Local Control Flow
 
 This explainer document provides an informal presentation of the
-*typed continuations* proposal, which is a minimal extension to Wasm
-for structured non-local control flow.
+*typed continuations* proposal, which is a minimal and compatible
+extension to Wasm for structured non-local control flow. The proposal
+is minimal in the sense that it leverages the existing instruction set
+and extends the set only with the bare minimum number of instructions
+to suspend, resume, and abort computations. It is compatible in
+multiple senses: 1) it preserves backwards compatibility with legacy
+code, 2) it is compatible with the Wasm philosophy: typed
+continuations admit a simple static and operational semantics.
 
 ## Table of contents
 
@@ -114,6 +120,12 @@ interface for structured manipulation of the execution stack via
    unobstructed stack trace in the presence of continuations.
 
  * **JS Promises compatibility**: TODO
+
+ * **Exception handling compatibility**: [The exception handling
+   proposal](https://github.com/WebAssembly/exception-handling) adds
+   special support for one kind of non-local control flow abstraction,
+   namely, exception handlers. Exceptions must continue to work in the
+   presence of typed continuations and vice versa.  not obstruct
 
  * **Preserve Wasm invariants of legacy code**: The proposal must
    preserve backwards compatibility with existing Wasm code. In
@@ -830,13 +842,60 @@ the result `42`: (`r(42)`)
 ## FAQ
 
 ### Shift/reset or control/prompt as an alternative basis
-TODO
+
+An alternative to typed continuations is to use more classical
+delimited continuations arising from operators such as shift/reset and
+control/prompt. As seen in the examples section shift/reset can be
+viewed as a special instance of our proposal with a single control tag
+`shift` and a handler for each `reset`. Thus every non-local control
+flow abstraction has to be codified via a single control tag, which
+makes static typing considerably more difficult. In order to preserve
+static type-safety operators like shift/reset require something like
+*answer-type modification*, which would be a fairly profound addition
+to the Wasm type system.
 
 ### Tail-resumptive handlers
-TODO
+
+A handler is said to be *tail-resumptive* if the handler invokes the
+continuation in tail-position in every control tag clause. A classical
+example of a tail-resumptive handler is dynamic binding (which can be
+useful to implement implicit parameters to computations). The key
+insight is that the control tag clauses of a tail-resumptive handler
+can be inlined at the control tag invocation sites, because they do
+not perform any fancy control flow manipulation, they simply "retrieve
+a value", as it were. The gain by inlining the clause definitions is
+that computation need not spend time constructing continuations.
+
+The present iteration of this proposal do not support facilities for
+identifying and inlining tail-resumptive handlers as there does not
+yet exist any real-world workloads that suggest optimising for
+tail-resumptive handlers is worth the additional
+complexity. Furthermore, a feature such as dynamic binding can already
+be efficiently simulated in Wasm by way of mutable reference cells.
 
 ### Multi-shot continuations
-TODO
+
+Our continuations are single-shot, or more precisely, *linear*,
+meaning they have to be invoked exactly once. An invocation can be
+either resumptive or abortive. An alternative is to allow an unbounded
+number of invocations of continuations. Such continuations are
+colloquially known as *multi-shot* continuations. Multi-shot
+continuations can be useful for a variety of use-cases such as
+implementing backtracking, probabilistic programming, process
+duplication, and many more. However, the main problem with multi-shot
+continuations is that they do not readily preserve
+backwards-compatibility with legacy code as every computation may
+repeated multiple times, which can be problematic in the presence of
+linear resources such as sockets.  The linearity restriction imposed
+on continuations by this proposal is absolutely crucial in order to
+preserve invariants of legacy code.
+
+Another reason to prefer single-shot continuations over multi-shot
+continuations is efficiency. Single-shot continuations do not require
+any stack copying on imperative runtimes (i.e. runtimes that based on
+mutation of the stack/registers), whereas multi-shot continuations
+need to be copied prior to invocation in order to ensure that a
+subsequent invocation can take place.
 
 ### Named control tag dispatch
 TODO
