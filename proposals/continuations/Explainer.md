@@ -81,11 +81,11 @@ control tag.
 ### Typed Continuation Primer
 
 TODO
-* Introduce the concept of delimited continuations
-* Control tags (aka. effectful operations)
-* Invocation of control tags
-* Abortion of suspended computations
-* Linearity constraint
+* [x] Introduce the concept of delimited continuations
+* [x] Control tags (aka. effectful operations)
+* [x] Invocation of control tags
+* [ ] Abortion of suspended computations
+* [ ] Linearity constraint
 
 <!-- Many industrial-grade programming languages feature non-local control
 flow abstractions such as async/await (C#/F#/JavaScript/Rust/Scala),
