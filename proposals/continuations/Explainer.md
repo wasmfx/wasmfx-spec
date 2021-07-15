@@ -121,9 +121,6 @@ interface for structured manipulation of the execution stack via
    DWARF, meaning it must be possible to obtain a sequential
    unobstructed stack trace in the presence of continuations.
 
- * **JS Promises compatibility**: The proposal must interact with the
-   JS Promises API for suspending Wasm.
-
  * **Exception handling compatibility**: [The exception handling
    proposal](https://github.com/WebAssembly/exception-handling) adds
    special support for one kind of non-local control flow abstraction,
