@@ -86,6 +86,8 @@ TODO
 * [x] Invocation of control tags
 * [ ] Abortion of suspended computations
 * [ ] Linearity constraint
+* [ ] Mention the connection with stacks early on
+* [ ] Intuition: asymmetric coroutines sprinkled with some effect handlers goodies
 
 <!-- Many industrial-grade programming languages feature non-local control
 flow abstractions such as async/await (C#/F#/JavaScript/Rust/Scala),
