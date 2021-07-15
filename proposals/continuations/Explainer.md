@@ -119,7 +119,8 @@ interface for structured manipulation of the execution stack via
    DWARF, meaning it must be possible to obtain a sequential
    unobstructed stack trace in the presence of continuations.
 
- * **JS Promises compatibility**: TODO
+ * **JS Promises compatibility**: The proposal must interact with the
+   JS Promises API for suspending Wasm.
 
  * **Exception handling compatibility**: [The exception handling
    proposal](https://github.com/WebAssembly/exception-handling) adds
@@ -154,7 +155,7 @@ a *resumable* exception. A tag declaration provides the type
 signature of a control tag.
 
 ```wat
-(event $label (param tp*) (result tr*))
+(tag $label (param tp*) (result tr*))
 ```
 
 The `$label` is the name of the operation. The parameter types `tp*`
@@ -184,7 +185,7 @@ first way resumes a continuation under a named *handler*, which handles
 subsequent control suspensions within the continuation.
 
 ```wat
-cont.resume (event $label $handler)* : [tr* (cont ([tr*] -> [t2*]))] -> [t2*]
+cont.resume (tag $label $handler)* : [tr* (cont ([tr*] -> [t2*]))] -> [t2*]
 ```
 
 The `cont.resume` instruction is parameterised by a collection of
@@ -793,52 +794,97 @@ The output is as follows, demonstrating the various different scheduling behavio
 ## Implementation strategies
 
 ### Segmented Stacks
-```ioke
-   (stack 1)               (stack 2)              (stack 3)
 
-|-------------|
-| @prompt A   |
-|-------------|
-|             |
-| ...         |         (suspended)
-| resume ~~~~~~~~~~~~~> |-------------|
-| f(r)        |<<<      | @prompt B   |
-.             .         |-------------|
-.             .         |             |
-.             .         | ...         |
-                        | prompt <------------> |------------|
-                        .             .         | @prompt C  |
-                        .             .         |------------|
-                        .             .         | 1+         |
-                                                | []         |
-                                                .            .
-                                                .            .
+Segmented stacks is a state-of-the-art implementation technique for
+continuations (cite: Dybvig et al., Chez Scheme, Multicore OCaml). The
+principal idea underpinning segmented stacks is to view each
+continuation as representing a separate stack.
+
+Initially there is one stack, which may create other stacks. Each
+child stack may create further stacks. Lineage of stacks is maintained
+by linking children to their parent.
+
+```ioke
+      (stack 1)
+       (active)
+ |---------------------|
+ |                     |
+>| ...                 |
+ |                     |
+ | $c = cont.new $f    |
+ | $h1                 |
+ | cont.resume $h1 $c  |
+ .                     .
+ .                     .
+
+```
+
+The first stack may perform some computation, before the stack pointer
+`>` moves to the `cont.new` instruction. Execution of the `cont.new`
+instruction creates a new suspended stack for the computation implied
+by `$f`.
+
+
+```ioke
+      (stack 1)                         (stack 2)
+       (active)
+ |---------------------|
+ |                     |
+ | ...                 |
+ |                     |                 (suspended)
+>| $c = cont.new $f -------------> |---------------------|
+ | $h1                 |           | $f()                |
+ | cont.resume $h1 $c  |           |                     |
+ .                     .           .                     .
+ .                     .           .                     .
+                                   .                     .
+
+```
+
+Stack 1 maintains control after the creation of stack 2, and thus
+execution continues on stack 1 until the stack pointer reaches the
+`cont.resume` instruction. The `cont.resume` instruction suspends
+stack 1 and transfers control to new stack 2. The transfer of control
+reverses the parent-child link, such that stack 2 now points back to
+stack 1.
+
+```ioke
+      (stack 1)                         (stack 2)
+       (active)
+ |---------------------|
+ |                     |
+ | ...                 |
+ |                     |                 (suspended)
+ | $c = cont.new $f    |       ----|---------------------|
+ | $h1                 |<-----/    | $f()                |
+>| cont.resume $h1 $c  |           |                     |
+ .                     .           .                     .
+ .                     .           .                     .
+                                   .                     .
+```
+
+The stack pointer moves to the top of stack 2, and thus execution
+continues on stack 2.
+
+
+```ioke
+      (stack 1)                         (stack 2)
+       (suspended)
+ |---------------------|
+ |                     |
+ | ...                 |
+ |                     |                 (active)
+ | $c = cont.new $f    |       ----|---------------------|
+ | $h1                 |<-----/   >| $f()                |
+ |                     |           |                     |
+ .                     .           .                     .
+ .                     .           .                     .
+                                   .                     .
 ```
 
 Later we may want to resume the resumption `r` again with
 the result `42`: (`r(42)`)
 
-```ioke
-   (stack 1)              (stack 2)              (stack 3)
-
-|-------------|
-| @prompt A   |
-|-------------|
-|             |
-| ...         |         (suspended)
-| resume_t* r ~~~~~~~~> |-------------|
-|             |         | @prompt B   |
-| ...         |         |-------------|
-| resume(r,42)|<<<      |             |
-.             .         | ...         |
-.             .         | prompt <------------> |------------|
-.             .         .             .         | @prompt C  |
-                        .             .         |------------|
-                        .             .         | 1+         |
-                                                | []         |
-                                                .            .
-```
-<!-- figures thanks to Daan Leijen (https://github.com/koka-lang/libmprompt/edit/main/README.md) -->
 ## FAQ
 
 ### Shift/reset or control/prompt as an alternative basis
