@@ -4,11 +4,13 @@ This explainer document provides an informal presentation of the
 *typed continuations* proposal, which is a minimal and compatible
 extension to Wasm for structured non-local control flow. The proposal
 is minimal in the sense that it leverages the existing instruction set
-and extends the set only with the bare minimum number of instructions
-to suspend, resume, and abort computations. It is compatible in
-multiple senses: 1) it preserves backwards compatibility with legacy
-code, 2) it is compatible with the Wasm philosophy: typed
-continuations admit a simple static and operational semantics.
+and extends it only with the bare minimum number of instructions to
+suspend, resume, and abort computations. It is compatible in the sense
+that: a) it is backward compatible with legacy code, 2) it respects
+the Wasm philosophy: typed continuations admit a simple static and
+operational semantics.
+
+SL: I don't think the *compatible* part adds much; consider deleting
 
 ## Table of contents
 
@@ -26,57 +28,73 @@ continuations admit a simple static and operational semantics.
 
 ## Motivation
 
-Non-local control flow is a powerful means that endows the programmer
-with the ability to suspend the current execution context and later
-resume it. Many industrial-strength programming languages feature a
-wealth of non-local control flow abstractions such as async/await,
-coroutines, generators/iterators, effect handlers, call/cc, and so
-forth. For some programming languages non-local control flow is the
-embodiment of their identity, meaning they depend on non-local control
-flow for efficiency, e.g. to support massively scalable
-concurrency. Currently, Wasm lacks support for implementing these
-abstractions directly and efficiently without a circuitous global
-transformation of source programs on the producer side.  One possible
-strategy is to add special support for each of the aforementioned
-non-local control flow abstractions to Wasm, however, this strategy is
-not sustainable as it does not scale to the next 700 non-local control
-flow abstractions. Instead, the goal of this proposal is to introduce
-a structured unifying mechanism, which is sufficiently general to
-cover the present use-cases as well as being compatible with future
-use-cases, whilst admitting efficient implementations.  The proposed
-mechanism is dubbed *typed continuations*, which essentially amounts
-to a low-level variation of Plotkin and Pretnar's *effect handlers*.
+Non-local control flow features provide the ability to suspend the
+current execution context and later resume it. Many
+industrial-strength programming languages feature a wealth of
+non-local control flow features such as async/await, coroutines,
+generators/iterators, effect handlers, call/cc, and so forth. For some
+programming languages non-local control flow is central to their
+identity, meaning that they rely on non-local control flow for
+efficiency, e.g. to support massively scalable concurrency. Currently,
+Wasm lacks support for implementing these features directly and
+efficiently without a circuitous global transformation of source
+programs on the producer side. One possible strategy is to add special
+support for each of the aforementioned non-local control flow feature
+to Wasm, however, this strategy is not sustainable as it does not
+scale to the next 700 non-local control flow features. Instead, the
+goal of this proposal is to introduce a unifed structured mechanism
+that is sufficiently general to cover present use-cases as well as
+being forwards compatible with future use-cases, while admitting
+efficient implementations. The proposed mechanism is dubbed *typed
+continuations*, and technially amounts to a low-level variation of
+Plotkin and Pretnar's *effect handlers*.
 
-A *continuation* is a first-class programmatic object that represents
-the remainder of computation from a certain point in time. Typed
-continuations is based on a structured notion of delimited
-continuations. A *delimited continuation* is a continuation whose
-extent is delimited by some *control delimiter*, meaning it represents
-the remainder of computation from a certain point in time up to (and
-possibly including) its control delimiter. The alternative to
-delimited continuations is undelimited continuations, which represents
-the remainder of the *entire* program. Between the two notions
-delimited continuations are favourable as they are more fine-grain in
-the sense that they provide a means for suspending local execution
-contexts rather than the entire global execution context. In
-particular, delimited continuations are more expressive, since a
-undelimited continuation can be viewed as delimited continuation whose
-control delimiter is placed at the start of the program.
+SL: explain why it's *typed continuations*?
 
-The crucial feature of our typed continuations that make them more
-structured than conventional delimited continuations is the addition
-of *control tags*. A control tag is a typed symbolic entity that
-suspends the current execution context and reifies it as a
-continuation object up to its control delimiter. The type of a control
-tag communicates the type of its payload as well as its expected
-return type, i.e. the type of data that must be supplied to its
-associated continuation upon resumption. In other words, control tags
-define an *interface* for constructing continuation objects. A second
-feature that adds more structure is that the construction of
-continuation objects is kept separate from the *handling* of
-continuation objects. A continuation object is handled at the
+SL: link to something about effect handlers?
+
+SL: It may be a bit confusing to bandy around all of this terminology
+(typed continuations and effect handlers) without more context.
+
+A *continuation* is a first-class program object that represents the
+remainder of computation from a certain point in the execution of a
+program. The typed continuations proposal is based on a structured
+notion of delimited continuations. A *delimited continuation* is a
+continuation whose extent is delimited by some *control delimiter*,
+meaning it represents the remainder of computation from a certain
+point in time up to (and possibly including) its control
+delimiter. The alternative to delimited continuations is undelimited
+continuations, which represent the remainder of the *entire*
+program. Between the two notions delimited continuations are
+preferable as they are more fine-grained in the sense that they
+provide a means for suspending local execution contexts rather than
+the entire global execution context. In particular, delimited
+continuations are more expressive, as an undelimited continuation is
+just a delimited continuation whose control delimiter is placed at the
+start of the program.
+
+SL: explain how an efficient way of implementing continuations is as
+stacks (though other implementations are also possible)
+
+The crucial feature of the typed continuations proposal that makes it
+more structured than conventional delimited continuations is *control
+tags*. A control tag is a typed symbolic entity that suspends the
+current execution context and reifies it as a *continuation object*
+(henceforth, just *continuation*) up to its control delimiter. The
+type of a control tag communicates the type of its payload as well as
+its expected return type, i.e. the type of data that must be supplied
+to its associated continuation upon resumption. In other words,
+control tags define an *interface* for constructing continuations. A
+second aspect of the design that aids modularity by separating
+concerns is that the construction of continuations is distinct from
+*handling* of continuations. A continuation is handled at the
 delimiter of a control tag rather than at the invocation site of the
 control tag.
+
+SL: point out that a control tag is just a standard Wasm tag as used
+elsewhere in Wasm (e.g. in the exceptions proposal), though we do make
+use of the `result` component of tags where other Wasm features (in
+particular exceptions) may not
 
 ### Typed Continuation Primer
 
@@ -109,9 +127,9 @@ interface for structured manipulation of the execution stack via
 
 ## Additional Requirements
 
- * **No GC dependency**: We intend every host to be able to use typed
-   continuations implement their non-local flow abstractions
-   irrespective of whether their memory is managed by a GC. Thus this
+ * **No GC dependency**: We intend every language to be able to use
+   typed continuations to implement non-local flow abstractions
+   irrespective of whether its memory is managed by a GC. Thus this
    proposal must not depend on a full-blown GC, rather, reference
    counting or a similar technique must be sufficient in cases where
    some form of memory management is necessary.
@@ -125,13 +143,13 @@ interface for structured manipulation of the execution stack via
    proposal](https://github.com/WebAssembly/exception-handling) adds
    special support for one kind of non-local control flow abstraction,
    namely, exception handlers. Exceptions must continue to work in the
-   presence of typed continuations and vice versa.  not obstruct
+   presence of typed continuations and vice versa.
 
- * **Preserve Wasm invariants of legacy code**: The proposal must
-   preserve backwards compatibility with existing Wasm code. In
-   particular, this means that the presence of typed continuations
-   must not break invariants of existing code, e.g. code that expects
-   to be executed once must not suddenly be executed twice.
+ * **Preserve Wasm invariants of legacy code**: The proposal must be
+   backwards compatibile with existing Wasm code. In particular, this
+   means that the presence of typed continuations should not break
+   invariants of existing code, e.g. code that expects to be executed
+   once should not suddenly be executed twice.
 
 ## Proposal
 
@@ -148,24 +166,24 @@ continuation has run to completion.
 
 ### Declaring Control Tags
 
-A control tag is similar to an exception with the addition that it
-has a result type. Operationally, a control tag may be thought of as
-a *resumable* exception. A tag declaration provides the type
-signature of a control tag.
+A control tag is similar to an exception extended with a result
+type. Operationally, a control tag may be thought of as a *resumable*
+exception. A tag declaration provides the type signature of a control
+tag.
 
 ```wat
 (tag $label (param tp*) (result tr*))
 ```
 
 The `$label` is the name of the operation. The parameter types `tp*`
-describes the expected stack layout prior to invoking the tag,
-and the result types `tr*` describes the stack layout following an
-invocation of the operation.
+describe the expected stack layout prior to invoking the tag, and the
+result types `tr*` describe the stack layout following an invocation
+of the operation.
 
 ### Creating Continuations
 
-The following instruction creates a continuation object in *suspended
-state* from a function.
+The following instruction creates a continuation in *suspended state*
+from a function.
 
 ```wat
 cont.new : [(ref ([t1*] -> [t2*])] -> [(cont ([t1*] -> [t2*]))]
@@ -173,30 +191,29 @@ cont.new : [(ref ([t1*] -> [t2*])] -> [(cont ([t1*] -> [t2*]))]
 ```
 
 The instruction expects the top of the stack to contain a reference to
-a function of type `[t1*] -> [t2*]`. This function embodies a
-computation that may perform non-local control flow transfers.
+a function of type `[t1*] -> [t2*]`. The body of this function is a
+computation that may perform non-local control flow.
 
 
 ### Resuming Continuations
 
-There are three ways to resume (or start) a continuation object. The
-first way resumes a continuation under a named *handler*, which handles
+There are three ways to resume (or start) a continuation. The first
+way resumes the continuation under a named *handler*, which handles
 subsequent control suspensions within the continuation.
 
 ```wat
-cont.resume (tag $label $handler)* : [tr* (cont ([tr*] -> [t2*]))] -> [t2*]
+cont.resume (tag $name $handler)* : [tr* (cont ([tr*] -> [t2*]))] -> [t2*]
 ```
 
-The `cont.resume` instruction is parameterised by a collection of
-*tag clauses*, which maps control tag names to their respective
-handlers in the residual computation of the continuation object. The
-instruction `cont.resume` fully consumes its continuation argument,
-meaning a continuation object can only be used once.
+The `cont.resume` instruction is parameterised by a collection of *tag
+clauses*, each of which maps a control tag name to a handler for the
+corresponding operation. This handler is a label that denotes a
+pointer into the Wasm code. The instruction fully consumes its
+continuation argument, meaning a continuation may be used only once.
 
-The second way to resume a continuation object is to raise an
-exception at the control tag invocation site. This effectively
-amounts to performing "an abortive action" which causes the stack to
-be unwound.
+The second way to resume a continuation is to raise an exception at
+the control tag invocation site. This effectively amounts to
+performing "an abortive action" which causes the stack to be unwound.
 
 
 ```wat
@@ -204,13 +221,13 @@ cont.throw (exception $exn) : [tp* (cont $ft)] -> [t2*]
 ```
 
 The instruction `cont.throw` is parameterised by the exception to be
-raised at the control tag invocation site. As with `cont.resume`,
-this instruction also fully consumes its continuation object
-argument. Operationally, this instruction injects the exception `$exn`
+raised at the control tag invocation site. As with `cont.resume`, this
+instruction also fully consumes its continuation
+argument. Operationally, this instruction raises the exception `$exn`
 with parameters of type `tp*` at the control tag invocation point in
-the residual computation of the provided continuation object.
+the context of the supplied continuation.
 
-The third way does not resume the continuation *per see*, rather, it
+The third way does not resume the continuation *per se*, rather, it
 provides a way to partially apply a continuation to some of its
 arguments.
 
@@ -219,16 +236,28 @@ cont.bind $ct : [tp* (cont ([tp* tp'*] -> [t2*]))] -> [(cont ([tp'*] -> [t2*]))]
 ```
 
 The instruction `cont.bind` binds the arguments of type `tp*` to the
-continuation `$ct`, yielding a modified continuation object which
-expects fewer arguments. As with the two previous instructions, this
-instruction does also consume its continuation object argument,
-though, in contrast to the other two it produces a new continuation
-object that can be supplied to either `cont.{resume,throw,bind}`.
+continuation `$ct`, yielding a modified continuation which expects
+fewer arguments. As with the two previous instructions, this
+instruction also consumes its continuation argument, though, in
+contrast to the other two it yields a new continuation that can be
+supplied to either `cont.{resume,throw,bind}`.
+
+SL: might be worth pointing out somewhere that a handler associated
+with `cont.resume` will also yield a new continuation whenever it
+handles an operation
+
+(The `cont.bind` instruction is directly analogous to the somewhat
+controversial `func.bind` instruction from the function references
+proposal. A potential problem with the latter that the former avoids
+relates to its lifetime. As continuations are currently single-shot,
+and compilers should ensure that they are always tidied up with
+`cont.throw` if they are never actually resumed, the lifetime is
+well-defined and there is no need for garbage collection.)
 
 ### Suspending Continuations
 
-A computation running inside a continuation object can suspend itself
-by invoking one of the declared control tags.
+A computation running inside a continuation can suspend itself by
+invoking one of the declared control tags.
 
 
 ```wat
@@ -236,13 +265,14 @@ cont.suspend $label : [tp*] -> [tr*]
 
 ```
 
-The instruction `cont.suspend` invokes the control tag named
-`$label` with arguments of types `tp*`. Operationally, the instruction
-transfers control out of the continuation object to nearest enclosing
-handler for `$label`. This is similar to how raising an exception
-transfers control to the nearest suitable exception handler. The
-crucial difference is the residual computation at the suspension point
-expects to resumed later with arguments of types `tr*`.
+The instruction `cont.suspend` invokes the control tag named `$label`
+with arguments of types `tp*`. Operationally, the instruction
+transfers control out of the continuation to the nearest enclosing
+handler for `$label`. This behaviour is similar to how raising an
+exception transfers control to the nearest exception handler that
+handles the exception. The key difference is that the continuation at
+the suspension point expects to be resumed later with arguments of
+types `tr*`.
 
 ## Examples
 
