@@ -21,6 +21,7 @@ SL: I don't think the *compatible* part adds much; consider deleting
    2. [Creating Continuations](#creating-continuations)
    3. [Resuming Continuations](#resuming-continuations)
    4. [Suspending Continuations](#suspending-continuations)
+   5. [Control Barriers](#control-barriers)
 4. [Examples](#examples)
 5. [Implementation strategies](#implementation-strategies)
    1. [Segmented Stacks](#segmented-stacks)
@@ -273,6 +274,10 @@ exception transfers control to the nearest exception handler that
 handles the exception. The key difference is that the continuation at
 the suspension point expects to be resumed later with arguments of
 types `tr*`.
+
+### Control Barriers
+
+TODO
 
 ## Examples
 
