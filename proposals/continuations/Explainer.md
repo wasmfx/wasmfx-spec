@@ -47,7 +47,7 @@ goal of this proposal is to introduce a unifed structured mechanism
 that is sufficiently general to cover present use-cases as well as
 being forwards compatible with future use-cases, while admitting
 efficient implementations. The proposed mechanism is dubbed *typed
-continuations*, and technially amounts to a low-level variation of
+continuations*, and technically amounts to a low-level variation of
 Plotkin and Pretnar's *effect handlers*.
 
 SL: explain why it's *typed continuations*?
