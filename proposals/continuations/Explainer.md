@@ -9,6 +9,14 @@ bare minimum number of instructions to suspend, resume, and abort
 computations, whilst it extends the type system with a single new
 reference type for *continuations*.
 
+**TODO**
+* [x] Introduce the concept of delimited continuations
+* [x] Control tags (aka. effectful operations)
+* [x] Invocation of control tags
+* [x] Abortion of suspended computations
+* [ ] Linearity constraint
+* [x] Mention the connection with stacks early on
+* [ ] Intuition: asymmetric coroutines sprinkled with some effect handlers goodies
 
 ## Table of contents
 
@@ -63,46 +71,6 @@ programmatic view one may think of control tags as providing an
 interface for the possible kinds of non-local transfers (or stack
 switches) that a computation may perform.
 
-<!-- A *continuation* is a first-class program object that represents the -->
-<!-- remainder of computation from a certain point in the execution of a -->
-<!-- program. The typed continuations proposal is based on a structured -->
-<!-- notion of delimited continuations. A *delimited continuation* is a -->
-<!-- continuation whose extent is delimited by some *control delimiter*, -->
-<!-- meaning it represents the remainder of computation from a certain -->
-<!-- point in time up to (and possibly including) its control -->
-<!-- delimiter. The alternative to delimited continuations is undelimited -->
-<!-- continuations, which represent the remainder of the *entire* -->
-<!-- program. Between the two notions delimited continuations are -->
-<!-- preferable as they are more fine-grained in the sense that they -->
-<!-- provide a means for suspending local execution contexts rather than -->
-<!-- the entire global execution context. In particular, delimited -->
-<!-- continuations are more expressive, as an undelimited continuation is -->
-<!-- just a delimited continuation whose control delimiter is placed at the -->
-<!-- start of the program. -->
-
-<!-- SL: explain how an efficient way of implementing continuations is as -->
-<!-- stacks (though other implementations are also possible) -->
-
-<!-- The crucial feature of the typed continuations proposal that makes it -->
-<!-- more structured than conventional delimited continuations is *control -->
-<!-- tags*. A control tag is a typed symbolic entity that suspends the -->
-<!-- current execution context and reifies it as a *continuation object* -->
-<!-- (henceforth, just *continuation*) up to its control delimiter. The -->
-<!-- type of a control tag communicates the type of its payload as well as -->
-<!-- its expected return type, i.e. the type of data that must be supplied -->
-<!-- to its associated continuation upon resumption. In other words, -->
-<!-- control tags define an *interface* for constructing continuations. A -->
-<!-- second aspect of the design that aids modularity by separating -->
-<!-- concerns is that the construction of continuations is distinct from -->
-<!-- *handling* of continuations. A continuation is handled at the -->
-<!-- delimiter of a control tag rather than at the invocation site of the -->
-<!-- control tag. -->
-
-<!-- SL: point out that a control tag is just a standard Wasm tag as used -->
-<!-- elsewhere in Wasm (e.g. in the exceptions proposal), though we do make -->
-<!-- use of the `result` component of tags where other Wasm features (in -->
-<!-- particular exceptions) may not -->
-
 ### Typed Continuation Primer
 
 A *continuation* is a first-class program object that represents the
@@ -141,15 +109,6 @@ delimiter of a control tag rather than at the invocation site of the
 control tag. Control tags are a mild extension of exception tags from
 exception handling proposal. The only difference is that in addition
 to a payload type, a control tag also declares a return type.
-
-TODO
-* [x] Introduce the concept of delimited continuations
-* [x] Control tags (aka. effectful operations)
-* [x] Invocation of control tags
-* [ ] Abortion of suspended computations
-* [ ] Linearity constraint
-* [ ] Mention the connection with stacks early on
-* [ ] Intuition: asymmetric coroutines sprinkled with some effect handlers goodies
 
 <!-- Many industrial-grade programming languages feature non-local control
 flow abstractions such as async/await (C#/F#/JavaScript/Rust/Scala),
