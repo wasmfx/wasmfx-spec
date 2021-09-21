@@ -4,26 +4,25 @@ This explainer document provides an informal presentation of the
 *typed continuations* proposal, which is a minimal and compatible
 extension to Wasm for structured non-local control flow. The proposal
 is minimal in the sense that it leverages the existing instruction set
-and extends it only with the bare minimum number of instructions to
-suspend, resume, and abort computations. It is compatible in the sense
-that: a) it is backward compatible with legacy code, 2) it respects
-the Wasm philosophy: typed continuations admit a simple static and
-operational semantics.
+and type system. The proposal extends the instruction set with the
+bare minimum number of instructions to suspend, resume, and abort
+computations, whilst it extends the type system with a single new
+reference type for *continuations*.
 
-SL: I don't think the *compatible* part adds much; consider deleting
 
 ## Table of contents
 
 1. [Motivation](#motivation)
 2. [Additional Requirements](#additional-requirements)
-3. [Proposal](#proposal)
+3. [Instruction Set](#instruction-set)
    1. [Declaring Control Tags](#declaring-control-tags)
    2. [Creating Continuations](#creating-continuations)
    3. [Resuming Continuations](#resuming-continuations)
    4. [Suspending Continuations](#suspending-continuations)
-   5. [Control Barriers](#control-barriers)
+   5. [Binding Continuations](#binding-continuations)
+   6. [Trapping Continuations](#trapping-continuations)
 4. [Examples](#examples)
-5. [Implementation strategies](#implementation-strategies)
+5. [Implementation Strategies](#implementation-strategies)
    1. [Segmented Stacks](#segmented-stacks)
 6. [FAQ](#faq)
 
@@ -46,16 +45,65 @@ scale to the next 700 non-local control flow features. Instead, the
 goal of this proposal is to introduce a unifed structured mechanism
 that is sufficiently general to cover present use-cases as well as
 being forwards compatible with future use-cases, while admitting
-efficient implementations. The proposed mechanism is dubbed *typed
-continuations*, and technially amounts to a low-level variation of
-Plotkin and Pretnar's *effect handlers*.
+efficient implementations. The proposed mechanism is based on proven
+technology: *delimited continuations*, which provides a
+well-understood semantics for modelling stack switching (i.e. one may
+think of continuations as denoting stacks). However, as is, delimited
+continuations cannot be readily fit into the Wasm ecosystem, because
+the Wasm type system is not powerful enough to type them. The gist of
+the problem is that the classic treatment of delimited continuations
+provides only one 'universal' control tag (i.e. the mechanism which
+transforms a runtime stack into a programmatic data object). In order
+to use Wasm's simple type system to type delimited continuations, we
+use the idea of multiple *named* control tags from Plotkin and
+Pretnar's effect handlers. Each control tag is declared module-wide
+along its payload type and return type. This declaration can be used
+to readily type points of non-local transfer of control. From a
+programmatic view one may think of control tags as providing an
+interface for the possible kinds of non-local transfers (or stack
+switches) that a computation may perform.
 
-SL: explain why it's *typed continuations*?
+<!-- A *continuation* is a first-class program object that represents the -->
+<!-- remainder of computation from a certain point in the execution of a -->
+<!-- program. The typed continuations proposal is based on a structured -->
+<!-- notion of delimited continuations. A *delimited continuation* is a -->
+<!-- continuation whose extent is delimited by some *control delimiter*, -->
+<!-- meaning it represents the remainder of computation from a certain -->
+<!-- point in time up to (and possibly including) its control -->
+<!-- delimiter. The alternative to delimited continuations is undelimited -->
+<!-- continuations, which represent the remainder of the *entire* -->
+<!-- program. Between the two notions delimited continuations are -->
+<!-- preferable as they are more fine-grained in the sense that they -->
+<!-- provide a means for suspending local execution contexts rather than -->
+<!-- the entire global execution context. In particular, delimited -->
+<!-- continuations are more expressive, as an undelimited continuation is -->
+<!-- just a delimited continuation whose control delimiter is placed at the -->
+<!-- start of the program. -->
 
-SL: link to something about effect handlers?
+<!-- SL: explain how an efficient way of implementing continuations is as -->
+<!-- stacks (though other implementations are also possible) -->
 
-SL: It may be a bit confusing to bandy around all of this terminology
-(typed continuations and effect handlers) without more context.
+<!-- The crucial feature of the typed continuations proposal that makes it -->
+<!-- more structured than conventional delimited continuations is *control -->
+<!-- tags*. A control tag is a typed symbolic entity that suspends the -->
+<!-- current execution context and reifies it as a *continuation object* -->
+<!-- (henceforth, just *continuation*) up to its control delimiter. The -->
+<!-- type of a control tag communicates the type of its payload as well as -->
+<!-- its expected return type, i.e. the type of data that must be supplied -->
+<!-- to its associated continuation upon resumption. In other words, -->
+<!-- control tags define an *interface* for constructing continuations. A -->
+<!-- second aspect of the design that aids modularity by separating -->
+<!-- concerns is that the construction of continuations is distinct from -->
+<!-- *handling* of continuations. A continuation is handled at the -->
+<!-- delimiter of a control tag rather than at the invocation site of the -->
+<!-- control tag. -->
+
+<!-- SL: point out that a control tag is just a standard Wasm tag as used -->
+<!-- elsewhere in Wasm (e.g. in the exceptions proposal), though we do make -->
+<!-- use of the `result` component of tags where other Wasm features (in -->
+<!-- particular exceptions) may not -->
+
+### Typed Continuation Primer
 
 A *continuation* is a first-class program object that represents the
 remainder of computation from a certain point in the execution of a
@@ -90,14 +138,9 @@ second aspect of the design that aids modularity by separating
 concerns is that the construction of continuations is distinct from
 *handling* of continuations. A continuation is handled at the
 delimiter of a control tag rather than at the invocation site of the
-control tag.
-
-SL: point out that a control tag is just a standard Wasm tag as used
-elsewhere in Wasm (e.g. in the exceptions proposal), though we do make
-use of the `result` component of tags where other Wasm features (in
-particular exceptions) may not
-
-### Typed Continuation Primer
+control tag. Control tags are a mild extension of exception tags from
+exception handling proposal. The only difference is that in addition
+to a payload type, a control tag also declares a return type.
 
 TODO
 * [x] Introduce the concept of delimited continuations
@@ -152,7 +195,7 @@ interface for structured manipulation of the execution stack via
    invariants of existing code, e.g. code that expects to be executed
    once should not suddenly be executed twice.
 
-## Proposal
+## Instruction Set
 
 The proposal adds a new reference type for continuations.
 
@@ -173,10 +216,10 @@ exception. A tag declaration provides the type signature of a control
 tag.
 
 ```wat
-(tag $label (param tp*) (result tr*))
+(tag $tag (param tp*) (result tr*))
 ```
 
-The `$label` is the name of the operation. The parameter types `tp*`
+The `$tag` is the name of the operation. The parameter types `tp*`
 describe the expected stack layout prior to invoking the tag, and the
 result types `tr*` describe the stack layout following an invocation
 of the operation.
@@ -198,12 +241,12 @@ computation that may perform non-local control flow.
 
 ### Resuming Continuations
 
-There are three ways to resume (or start) a continuation. The first
-way resumes the continuation under a named *handler*, which handles
+There are two ways to resume (or start) a continuation. The first way
+resumes the continuation under a named *handler*, which handles
 subsequent control suspensions within the continuation.
 
 ```wat
-cont.resume (tag $name $handler)* : [tr* (cont ([tr*] -> [t2*]))] -> [t2*]
+cont.resume (tag $tag $handler)* : [tr* (cont ([tr*] -> [t2*]))] -> [t2*]
 ```
 
 The `cont.resume` instruction is parameterised by a collection of *tag
@@ -218,7 +261,7 @@ performing "an abortive action" which causes the stack to be unwound.
 
 
 ```wat
-cont.throw (exception $exn) : [tp* (cont $ft)] -> [t2*]
+cont.throw (exception $exn) : [tp* (cont ([tr*] -> [t2*]))] -> [t2*]
 ```
 
 The instruction `cont.throw` is parameterised by the exception to be
@@ -228,9 +271,41 @@ argument. Operationally, this instruction raises the exception `$exn`
 with parameters of type `tp*` at the control tag invocation point in
 the context of the supplied continuation.
 
-The third way does not resume the continuation *per se*, rather, it
-provides a way to partially apply a continuation to some of its
-arguments.
+A side effect of both `cont.resume` and `cont.throw` is that their
+continuation argument is destructively modified such
+
+### Suspending Continuations
+
+A computation running inside a continuation can suspend itself by
+invoking one of the declared control tags.
+
+
+```wat
+cont.suspend $tag : [tp*] -> [tr*]
+
+```
+
+The instruction `cont.suspend` invokes the control tag named `$tag`
+with arguments of types `tp*`. Operationally, the instruction
+transfers control out of the continuation to the nearest enclosing
+handler for `$tag`. This behaviour is similar to how raising an
+exception transfers control to the nearest exception handler that
+handles the exception. The key difference is that the continuation at
+the suspension point expects to be resumed later with arguments of
+types `tr*`.
+
+### Binding Continuations
+
+The domain of a continuation may be shrunk via `cont.bind`. This
+instruction provides a way to partially apply a given
+continuation. This facility turns out to be important in practice due
+to the block and type structure of Wasm as in order to return a
+continuation from a block, all branches within the block must agree on
+the type of continuation. By using `cont.bind`, one can
+programmatically ensure that the branches within a block each return a
+continuation with compatible type (the [Examples](#examples) section
+provides several example usages of `cont.bind`).
+
 
 ```wat
 cont.bind $ct : [tp* (cont ([tp* tp'*] -> [t2*]))] -> [(cont ([tp'*] -> [t2*]))]
@@ -238,14 +313,13 @@ cont.bind $ct : [tp* (cont ([tp* tp'*] -> [t2*]))] -> [(cont ([tp'*] -> [t2*]))]
 
 The instruction `cont.bind` binds the arguments of type `tp*` to the
 continuation `$ct`, yielding a modified continuation which expects
-fewer arguments. As with the two previous instructions, this
-instruction also consumes its continuation argument, though, in
-contrast to the other two it yields a new continuation that can be
-supplied to either `cont.{resume,throw,bind}`.
+fewer arguments. This instruction also consumes its continuation
+argument, and yields a new continuation that can be supplied to either
+`cont.{resume,throw,bind}`.
 
-SL: might be worth pointing out somewhere that a handler associated
-with `cont.resume` will also yield a new continuation whenever it
-handles an operation
+<!-- SL: might be worth pointing out somewhere that a handler associated -->
+<!-- with `cont.resume` will also yield a new continuation whenever it -->
+<!-- handles an operation -->
 
 (The `cont.bind` instruction is directly analogous to the somewhat
 controversial `func.bind` instruction from the function references
@@ -255,29 +329,20 @@ and compilers should ensure that they are always tidied up with
 `cont.throw` if they are never actually resumed, the lifetime is
 well-defined and there is no need for garbage collection.)
 
-### Suspending Continuations
+### Trapping Continuations
 
-A computation running inside a continuation can suspend itself by
-invoking one of the declared control tags.
-
+In order to ensure that control cannot be captured across language
+boundaries, we provide an instruction for explicitly trapping attempts
+at reifying stacks across language boundaries.
 
 ```wat
-cont.suspend $label : [tp*] -> [tr*]
-
+barrier $label bt instr* : [t1*] -> [t2*]
 ```
 
-The instruction `cont.suspend` invokes the control tag named `$label`
-with arguments of types `tp*`. Operationally, the instruction
-transfers control out of the continuation to the nearest enclosing
-handler for `$label`. This behaviour is similar to how raising an
-exception transfers control to the nearest exception handler that
-handles the exception. The key difference is that the continuation at
-the suspension point expects to be resumed later with arguments of
-types `tr*`.
-
-### Control Barriers
-
-TODO
+The `barrier` instruction is a block with label `$label`, block type
+`bt = [t1*] -> [t2*]`, and whose body is the instruction sequence
+given by `instr*`. Operationally, `barrier` may be viewed as a
+"catch-all" handler, that handles any control tag by invoking a trap.
 
 ## Examples
 
@@ -825,7 +890,9 @@ The output is as follows, demonstrating the various different scheduling behavio
 
 ### Delimited continuations (TODO)
 
-## Implementation strategies
+## Implementation Strategies
+
+### Stack cut'n'paste (TODO)
 
 ### Segmented Stacks
 
@@ -841,15 +908,15 @@ by linking children to their parent.
 ```ioke
       (stack 1)
        (active)
- |---------------------|
- |                     |
->| ...                 |
- |                     |
- | $c = cont.new $f    |
- | $h1                 |
- | cont.resume $h1 $c  |
- .                     .
- .                     .
+ |-----------------------|
+ |                       |
+ | ...                   |
+ |                       |
+ | (cont.resume $h1 $c); |
+>| $c = (cont.new $f)    |
+ |                       |
+ .                       .
+ .                       .
 
 ```
 
@@ -866,9 +933,8 @@ by `$f`.
  |                     |
  | ...                 |
  |                     |                 (suspended)
->| $c = cont.new $f -------------> |---------------------|
- | $h1                 |           | $f()                |
- | cont.resume $h1 $c  |           |                     |
+ |                     |           |---------------------|
+>| cont.resume $h1 $c ------------>| $f()                |
  .                     .           .                     .
  .                     .           .                     .
                                    .                     .
@@ -876,11 +942,12 @@ by `$f`.
 ```
 
 Stack 1 maintains control after the creation of stack 2, and thus
-execution continues on stack 1 until the stack pointer reaches the
-`cont.resume` instruction. The `cont.resume` instruction suspends
-stack 1 and transfers control to new stack 2. The transfer of control
-reverses the parent-child link, such that stack 2 now points back to
-stack 1.
+execution continues on stack 1. The next instruction, `cont.resume`
+suspends stack 1 and transfers control to new stack 2. Before
+transferring control, the instruction installs a delimiter `$h1` on
+stack 1. The transfer of control reverses the parent-child link, such
+that stack 2 now points back to stack 1. The instruction also installs
+a delimiter on the parent
 
 ```ioke
       (stack 1)                         (stack 2)
@@ -889,9 +956,9 @@ stack 1.
  |                     |
  | ...                 |
  |                     |                 (suspended)
- | $c = cont.new $f    |       ----|---------------------|
- | $h1                 |<-----/    | $f()                |
->| cont.resume $h1 $c  |           |                     |
+ |                     |       ----|---------------------|
+>| $h1                 |<-----/    | $f()                |
+ .                     .           |                     |
  .                     .           .                     .
  .                     .           .                     .
                                    .                     .
@@ -908,20 +975,88 @@ continues on stack 2.
  |                     |
  | ...                 |
  |                     |                 (active)
- | $c = cont.new $f    |       ----|---------------------|
+ |                     |       ----|---------------------|
  | $h1                 |<-----/   >| $f()                |
- |                     |           |                     |
+ .                     .           |                     |
  .                     .           .                     .
  .                     .           .                     .
                                    .                     .
 ```
 
-Later we may want to resume the resumption `r` again with
-the result `42`: (`r(42)`)
+As execution continues on stack 2 it may eventually perform a
+`cont.suspend`, which will cause another transfer of
+control. Supposing it invokes `cont.suspend` with some `$tag` handled
+by `$h1`, then stack 2 will transfer control back to stack 1.
+
+
+```ioke
+      (stack 1)                         (stack 2)
+       (suspended)
+ |---------------------|
+ |                     |
+ | ...                 |
+ |                     |                 (active)
+ |                     |       ----|---------------------|
+ | $h1                 |<-----/    | ...                 |
+ .                     .          >| cont.suspend $tag   |
+ .                     .           .                     .
+ .                     .           .                     .
+                                   .                     .
+```
+
+The suspension reverses the parent-child link again, and leaves behind
+a "hole" on stack 2, that can be filled by an invocation of
+`cont.resume`.
+
+```ioke
+      (stack 1)                         (stack 2)
+       (suspended)
+ |---------------------|
+ |                     |
+ | ...                 |
+ |                     |                 (active)
+ |                     |       --->|---------------------|
+>| $h1                 |------/    | ...                 |
+ .                     .           | [ ]                 |
+ .                     .           .                     .
+ .                     .           .                     .
+                                   .                     .
+```
+
+
 
 ## FAQ
 
-### Shift/reset or control/prompt as an alternative basis
+### Static Control Tag Dispatch
+
+The instruction `cont.suspend` is designed to perform dynamic dispatch
+on its provided control tag as an invocation of `cont.suspend` cannot
+in general know a priori which stacks (if any) in the active chain
+handles its supplied control tag. A compelling aspect of dynamic
+dispatch is that it is a conservative extension to Wasm in the sense
+that it does alter any of existing instructions or types. It also
+enables control abstractions to be composed in a modular way, as is. A
+potential problem is that dynamic dispatch can incur a linear runtime
+cost, especially if we think in terms of segmented stacks, where
+`cont.suspend` must search the active stack chain for a suitable
+handler for its argument. To guarantee O(1) transfer of control, some
+form of static dispatch is necessary. In order to dispatch statically
+we would need to know the target stack a priori, which implies the
+need for either maintaining a shadow stack or passing around map of
+control tags to handler addresses.
+
+### Symmetric Transfer of Control
+
+The proposal is tailored for asymmetric transfer of control, meaning
+that if a child stack wants to transfer control to one of its siblings
+it must first transfer control to its parent in order for it to
+transfer control to the designated sibling. Symmetric transfer of
+control would allow to side-step the parent and transfer control
+immediately to the sibling. Such a facility is not ruled out by the
+present proposal, but it would likely require an additional
+instruction and some way to identify stacks by name.
+
+### Shift/Reset or Control/Prompt as an Alternative Basis
 
 An alternative to typed continuations is to use more classical
 delimited continuations arising from operators such as shift/reset and
@@ -930,30 +1065,30 @@ viewed as a special instance of our proposal with a single control tag
 `shift` and a handler for each `reset`. Thus every non-local control
 flow abstraction has to be codified via a single control tag, which
 makes static typing considerably more difficult. In order to preserve
-static type-safety operators like shift/reset require something like
+static type-safety, operators like shift/reset require something like
 *answer-type modification*, which would be a fairly profound addition
-to the Wasm type system.
+to the Wasm type system [Danvy&Filinski'89, Cong et al. '21].
 
-### Tail-resumptive handlers
+### Tail-resumptive Handlers
 
 A handler is said to be *tail-resumptive* if the handler invokes the
-continuation in tail-position in every control tag clause. A classical
-example of a tail-resumptive handler is dynamic binding (which can be
-useful to implement implicit parameters to computations). The key
-insight is that the control tag clauses of a tail-resumptive handler
-can be inlined at the control tag invocation sites, because they do
-not perform any fancy control flow manipulation, they simply "retrieve
-a value", as it were. The gain by inlining the clause definitions is
-that computation need not spend time constructing continuations.
+continuation in tail-position in every control tag clause. The
+canonical example of a tail-resumptive handler is dynamic binding
+(which can be useful to implement implicit parameters to
+computations). The key insight is that the control tag clauses of a
+tail-resumptive handler can be inlined at the control tag invocation
+sites, because they do not perform any fancy control flow
+manipulation, they simply "retrieve a value", as it were. The gain by
+inlining the clause definitions is that computation need not spend
+time constructing continuations.
 
 The present iteration of this proposal do not support facilities for
-identifying and inlining tail-resumptive handlers as there does not
-yet exist any real-world workloads that suggest optimising for
-tail-resumptive handlers is worth the additional
-complexity. Furthermore, a feature such as dynamic binding can already
-be efficiently simulated in Wasm by way of mutable reference cells.
+identifying and inlining tail-resumptive handlers as none of the
+critical use-cases require such a facility. However, we envisage that
+a future iteration of this proposal can be extended with a facility
+for tail-resumptive handlers.
 
-### Multi-shot continuations
+### Multi-shot Continuations
 
 Our continuations are single-shot, or more precisely, *linear*,
 meaning they have to be invoked exactly once. An invocation can be
@@ -976,7 +1111,3 @@ any stack copying on imperative runtimes (i.e. runtimes that based on
 mutation of the stack/registers), whereas multi-shot continuations
 need to be copied prior to invocation in order to ensure that a
 subsequent invocation can take place.
-
-### Named control tag dispatch
-TODO
-
