@@ -1050,23 +1050,14 @@ for tail-resumptive handlers.
 ### Multi-shot Continuations
 
 Our continuations are single-shot, or more precisely, *linear*,
-meaning they have to be invoked exactly once. An invocation can be
-either resumptive or abortive. An alternative is to allow an unbounded
-number of invocations of continuations. Such continuations are
-colloquially known as *multi-shot* continuations. Multi-shot
-continuations can be useful for a variety of use-cases such as
-implementing backtracking, probabilistic programming, process
-duplication, and many more. However, the main problem with multi-shot
-continuations is that they do not readily preserve
-backwards-compatibility with legacy code as every computation may
-repeated multiple times, which can be problematic in the presence of
-linear resources such as sockets.  The linearity restriction imposed
-on continuations by this proposal is absolutely crucial in order to
-preserve invariants of legacy code.
-
-Another reason to prefer single-shot continuations over multi-shot
-continuations is efficiency. Single-shot continuations do not require
-any stack copying on imperative runtimes (i.e. runtimes that based on
-mutation of the stack/registers), whereas multi-shot continuations
-need to be copied prior to invocation in order to ensure that a
-subsequent invocation can take place.
+meaning they have to be invoked exactly once (although this is not
+statically enforced). An invocation can be either resumptive or
+abortive. An alternative is to allow an unbounded number of
+invocations of continuations. Such continuations are colloquially
+known as *multi-shot* continuations. Multi-shot continuations can be
+useful for a variety of use-cases such as implementing backtracking,
+probabilistic programming, process duplication, and many
+more. However, none of the critical use cases require multi-shot
+continuations. One can envisage a future iteration of this proposal
+which includes support for multi-shot continuations by way of some
+continuation clone instruction.
