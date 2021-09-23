@@ -1,13 +1,12 @@
-# Typed Continuations as a Structured Basis for Non-Local Control Flow
+# Typed Continuations
 
-This explainer document provides an informal presentation of the
-*typed continuations* proposal, which is a minimal and compatible
-extension to Wasm for structured non-local control flow. The proposal
-is minimal in the sense that it leverages the existing instruction set
-and type system. The proposal extends the instruction set with the
-bare minimum number of instructions to suspend, resume, and abort
-computations, whilst it extends the type system with a single new
-reference type for *continuations*.
+This document provides an informal presentation of the *typed
+continuations* proposal, a minimal and compatible extension to Wasm
+for structured non-local control flow. The proposal is minimal in the
+sense that it leverages the existing instruction set and type
+system. It extends the instruction set with instructions to suspend,
+resume, and abort computations, and extends the type system with a
+single new reference type for *continuations*.
 
 **TODO**
 * [x] Introduce the concept of delimited continuations
@@ -43,33 +42,41 @@ non-local control flow features such as async/await, coroutines,
 generators/iterators, effect handlers, call/cc, and so forth. For some
 programming languages non-local control flow is central to their
 identity, meaning that they rely on non-local control flow for
-efficiency, e.g. to support massively scalable concurrency. Currently,
-Wasm lacks support for implementing these features directly and
-efficiently without a circuitous global transformation of source
+efficiency, e.g. to support massively scalable concurrency.
+
+Currently, Wasm lacks support for implementing such features directly
+and efficiently without a circuitous global transformation of source
 programs on the producer side. One possible strategy is to add special
-support for each of the aforementioned non-local control flow feature
-to Wasm, however, this strategy is not sustainable as it does not
-scale to the next 700 non-local control flow features. Instead, the
-goal of this proposal is to introduce a unifed structured mechanism
-that is sufficiently general to cover present use-cases as well as
-being forwards compatible with future use-cases, while admitting
-efficient implementations. The proposed mechanism is based on proven
-technology: *delimited continuations*, which provides a
-well-understood semantics for modelling stack switching (i.e. one may
-think of continuations as denoting stacks). However, as is, delimited
-continuations cannot be readily fit into the Wasm ecosystem, because
-the Wasm type system is not powerful enough to type them. The gist of
-the problem is that the classic treatment of delimited continuations
-provides only one 'universal' control tag (i.e. the mechanism which
-transforms a runtime stack into a programmatic data object). In order
-to use Wasm's simple type system to type delimited continuations, we
-use the idea of multiple *named* control tags from Plotkin and
-Pretnar's effect handlers. Each control tag is declared module-wide
-along its payload type and return type. This declaration can be used
-to readily type points of non-local transfer of control. From a
-programmatic view one may think of control tags as providing an
-interface for the possible kinds of non-local transfers (or stack
-switches) that a computation may perform.
+support for each individual non-local control flow feature to Wasm,
+but strategy does not scale to the next 700 non-local control flow
+features. Instead, the goal of this proposal is to introduce a unifed
+structured mechanism that is sufficiently general to cover present
+use-cases as well as being forwards compatible with future use-cases,
+while admitting efficient implementations.
+
+The proposed mechanism is based on proven technology: *delimited
+continuations*. An undelimited continuation represents the rest of a
+computation from a certain point in its execution. A delimited
+continuation is a more modular form of continuation, representing the
+rest of a computation from a particular point in its execution up to a
+*delimiter* or *prompt*. Operationally, one may think of undelimited
+continuations as stacks and delimited continuations as segmented
+stacks.
+
+In their raw form delimited continuations do not readily fit into the
+Wasm ecosystem, as the Wasm type system is not powerful enough to type
+them. The gist of the problem is that the classic treatment of
+delimited continuations provides only one universal control tag
+(i.e. the mechanism which transforms a runtime stack into a
+programmatic data object). In order to use Wasm's simple type system
+to type delimited continuations, we use the idea of multiple *named*
+control tags from Plotkin and Pretnar's effect handlers. Each control
+tag is declared module-wide along its payload type and return
+type. This declaration can be used to readily type points of non-local
+transfer of control. From a operational perspective we may view
+control tags as a means for writing an interface for the possible
+kinds of non-local transfers (or stack switches) that a computation
+may perform.
 
 ### Typed Continuation Primer
 
@@ -79,19 +86,15 @@ program. The typed continuations proposal is based on a structured
 notion of delimited continuations. A *delimited continuation* is a
 continuation whose extent is delimited by some *control delimiter*,
 meaning it represents the remainder of computation from a certain
-point in time up to (and possibly including) its control
-delimiter. The alternative to delimited continuations is undelimited
-continuations, which represent the remainder of the *entire*
-program. Between the two notions delimited continuations are
-preferable as they are more fine-grained in the sense that they
-provide a means for suspending local execution contexts rather than
-the entire global execution context. In particular, delimited
-continuations are more expressive, as an undelimited continuation is
-just a delimited continuation whose control delimiter is placed at the
-start of the program.
-
-SL: explain how an efficient way of implementing continuations is as
-stacks (though other implementations are also possible)
+point up to (and possibly including) its control delimiter. An
+alternative to delimited continuations is undelimited continuations
+which represent the remainder of the *entire* program. Delimited
+continuations are preferable as they are more modular and more
+fine-grained in the sense that they provide a means for suspending
+local execution contexts rather than the entire global execution
+context. In particular, delimited continuations are more expressive,
+as an undelimited continuation is merely a delimited continuation
+whose control delimiter is placed at the start of the program.
 
 The crucial feature of the typed continuations proposal that makes it
 more structured than conventional delimited continuations is *control
@@ -106,9 +109,12 @@ second aspect of the design that aids modularity by separating
 concerns is that the construction of continuations is distinct from
 *handling* of continuations. A continuation is handled at the
 delimiter of a control tag rather than at the invocation site of the
-control tag. Control tags are a mild extension of exception tags from
-exception handling proposal. The only difference is that in addition
-to a payload type, a control tag also declares a return type.
+control tag. Control tags are a mild extension of exception tags as in
+the exception-handling proposal. The key difference is that in
+addition to a payload type, a control tag also declares a return type.
+
+Typed continuations may be efficiently implemented using segmented
+stacks, but other implementations are also possible.
 
 <!-- Many industrial-grade programming languages feature non-local control
 flow abstractions such as async/await (C#/F#/JavaScript/Rust/Scala),
