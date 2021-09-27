@@ -286,6 +286,12 @@ argument, and yields a new continuation that can be supplied to either
 <!-- with `cont.resume` will also yield a new continuation whenever it -->
 <!-- handles an operation -->
 
+SL: We need to take a bit more care with the story here. The following
+explanation only really holds true if we take the (probably
+impractical) view that it is a bug in the producer if it fails to tidy
+up with a `cont.throw`. Nevertheless, we still don't need a
+*cycle-detecting* garbage collector.
+
 (The `cont.bind` instruction is directly analogous to the somewhat
 controversial `func.bind` instruction from the function references
 proposal. A potential problem with the latter that the former avoids
@@ -992,14 +998,31 @@ a "hole" on stack 2, that can be filled by an invocation of
 
 ## FAQ
 
+### Memory Management
+
+The current proposal does not require a cycle-detecting garbage
+collector as the linearity of continuations guarantees that there are
+no cycles in continuation objects. In theory, we could do without any
+garbage collection at all if we took seriously the idea that failure
+to use a continuation constitutes a bug in the producer. In practice,
+we expect that for many systems the only feasible way to ensure that
+continuations are always used (or at least deallocated) is to use some
+form of garbage collection, such as a reference counting. Thus, in
+practice, we envisage Wasm implementations relying on some form of
+garbage collection, even if it is just based on reference counting.
+
 ### Static Control Tag Dispatch
+
+SL: This heading is misleading as both forms of dispatch discussed
+here are dynamic! The question is really one of linear vs
+constant-time dynamic dispatch.
 
 The instruction `cont.suspend` is designed to perform dynamic dispatch
 on its provided control tag as an invocation of `cont.suspend` cannot
 in general know a priori which stacks (if any) in the active chain
 handles its supplied control tag. A compelling aspect of dynamic
 dispatch is that it is a conservative extension to Wasm in the sense
-that it does alter any of existing instructions or types. It also
+that it does not alter any existing instructions or types. It also
 enables control abstractions to be composed in a modular way, as is. A
 potential problem is that dynamic dispatch can incur a linear runtime
 cost, especially if we think in terms of segmented stacks, where
@@ -1021,20 +1044,33 @@ immediately to the sibling. Such a facility is not ruled out by the
 present proposal, but it would likely require an additional
 instruction and some way to identify stacks by name.
 
-### Shift/Reset or Control/Prompt as an Alternative Basis
+SL: TODO: spell out the details of the design we sketched (Andreas,
+Luke, Sam)
+
+### Control/Prompt as an Alternative Basis
 
 An alternative to typed continuations is to use more classical
-delimited continuations arising from operators such as shift/reset and
-control/prompt. As seen in the examples section shift/reset can be
+delimited continuations via operators such as shift/reset and
+control/prompt. As seen in the examples section control/prompt can be
 viewed as a special instance of our proposal with a single control tag
-`shift` and a handler for each `reset`. Thus every non-local control
-flow abstraction has to be codified via a single control tag, which
-makes static typing considerably more difficult. In order to preserve
-static type-safety, operators like shift/reset require something like
-*answer-type modification*, which would be a fairly profound addition
-to the Wasm type system [Danvy&Filinski'89, Cong et al. '21].
+`control` and a handler for each `prompt`. Thus every non-local
+control flow abstraction has to be codified via a single control tag,
+which makes static typing considerably more difficult.
+
+SL: The following is not really true: answer-type modification makes
+the type system more expressive, but it's perfectly sound to consider
+rules that preclude answer-type modification.
+
+In order to preserve static type-safety, operators like shift/reset
+and control/prompt require something like *answer-type modification*,
+which would be a fairly profound addition to the Wasm type system
+[Danvy&Filinski'89, Cong et al. '21].
 
 ### Tail-resumptive Handlers
+
+SL: the business about constant-time dispatch is perhaps only relevant
+for tail-resumptive handlers, as in the general case one has to
+construct the continuation, which may take linear time anyway.
 
 A handler is said to be *tail-resumptive* if the handler invokes the
 continuation in tail-position in every control tag clause. The
@@ -1042,28 +1078,39 @@ canonical example of a tail-resumptive handler is dynamic binding
 (which can be useful to implement implicit parameters to
 computations). The key insight is that the control tag clauses of a
 tail-resumptive handler can be inlined at the control tag invocation
-sites, because they do not perform any fancy control flow
+sites, because they does not perform any fancy control flow
 manipulation, they simply "retrieve a value", as it were. The gain by
 inlining the clause definitions is that computation need not spend
 time constructing continuations.
 
-The present iteration of this proposal do not support facilities for
-identifying and inlining tail-resumptive handlers as none of the
-critical use-cases require such a facility. However, we envisage that
-a future iteration of this proposal can be extended with a facility
-for tail-resumptive handlers.
+The present iteration of this proposal does not include facilities for
+identifying and inlining tail-resumptive handlers. None of the
+critical use-cases requires such a facility. Nevertheless, it is
+natural to envisage a future iteration of this proposal that includes
+an extension for distinguishing tail-resumptive handlers.
+
 
 ### Multi-shot Continuations
 
-Our continuations are single-shot, or more precisely, *linear*,
-meaning they have to be invoked exactly once (although this is not
-statically enforced). An invocation can be either resumptive or
-abortive. An alternative is to allow an unbounded number of
-invocations of continuations. Such continuations are colloquially
-known as *multi-shot* continuations. Multi-shot continuations can be
-useful for a variety of use-cases such as implementing backtracking,
-probabilistic programming, process duplication, and many
-more. However, none of the critical use cases require multi-shot
-continuations. One can envisage a future iteration of this proposal
-which includes support for multi-shot continuations by way of some
-continuation clone instruction.
+Continuations in this proposal are *single-shot* (aka *linear*),
+meaning that they must be invoked exactly once (though this is not
+statically enforced). A continuation can be invoked either by resuming
+it (with `cont.resume`) or by aborting it (with `cont.throw`). Some
+applications such as backtracking, probabilistic programming, and
+process duplication exploit *multi-shot* continuations, but none of
+the critical use cases require multi-shot continuations. Nevertheless,
+it is natural to envisage a future iteration of this proposal that
+includes support for multi-shot continuations by way of a continuation
+clone instruction.
+
+
+TODO: named handlers
+
+TODO: first-class tags
+
+TODO: polymorphism
+
+TODO: compare to asyncify?
+
+TODO: compare to Wasm/k?
+
