@@ -204,9 +204,9 @@ a function of type `[t1*] -> [t2*]`. The body of this function is a
 computation that may perform non-local control flow.
 
 
-### Resuming Continuations
+### Invoking Continuations
 
-There are two ways to resume (or start) a continuation. The first way
+There are two ways to invoke (or run) a continuation. The first way
 resumes the continuation under a named *handler*, which handles
 subsequent control suspensions within the continuation.
 
@@ -220,7 +220,7 @@ corresponding operation. This handler is a label that denotes a
 pointer into the Wasm code. The instruction fully consumes its
 continuation argument, meaning a continuation may be used only once.
 
-The second way to resume a continuation is to raise an exception at
+The second way to invoke a continuation is to raise an exception at
 the control tag invocation site. This effectively amounts to
 performing "an abortive action" which causes the stack to be unwound.
 
@@ -236,8 +236,6 @@ argument. Operationally, this instruction raises the exception `$exn`
 with parameters of type `tp*` at the control tag invocation point in
 the context of the supplied continuation.
 
-A side effect of both `cont.resume` and `cont.throw` is that their
-continuation argument is destructively modified such
 
 ### Suspending Continuations
 
@@ -282,24 +280,6 @@ fewer arguments. This instruction also consumes its continuation
 argument, and yields a new continuation that can be supplied to either
 `cont.{resume,throw,bind}`.
 
-<!-- SL: might be worth pointing out somewhere that a handler associated -->
-<!-- with `cont.resume` will also yield a new continuation whenever it -->
-<!-- handles an operation -->
-
-SL: We need to take a bit more care with the story here. The following
-explanation only really holds true if we take the (probably
-impractical) view that it is a bug in the producer if it fails to tidy
-up with a `cont.throw`. Nevertheless, we still don't need a
-*cycle-detecting* garbage collector.
-
-(The `cont.bind` instruction is directly analogous to the somewhat
-controversial `func.bind` instruction from the function references
-proposal. A potential problem with the latter that the former avoids
-relates to its lifetime. As continuations are currently single-shot,
-and compilers should ensure that they are always tidied up with
-`cont.throw` if they are never actually resumed, the lifetime is
-well-defined and there is no need for garbage collection.)
-
 ### Trapping Continuations
 
 In order to ensure that control cannot be captured across language
@@ -314,6 +294,34 @@ The `barrier` instruction is a block with label `$label`, block type
 `bt = [t1*] -> [t2*]`, and whose body is the instruction sequence
 given by `instr*`. Operationally, `barrier` may be viewed as a
 "catch-all" handler, that handles any control tag by invoking a trap.
+
+## Continuation Lifetime
+
+### Producing Continuations
+
+There are three different ways in which continuations are produced:
+`cont.{new,suspend,bind}`. A fresh continuation object is allocated
+with `cont.new` and the current continuation is reused with
+`cont.suspend` and `cont.bind`.
+
+The `cont.bind` instruction is directly analogous to the mildly
+controversial `func.bind` instruction from the function references
+proposal. However, whereas the latter necessitates the allocation of a
+new closure, as continuations are single-shot no allocation is
+necessary: all allocation happens when the original continuation is
+created by preallocating one slot for each continuation argument.
+
+### Consuming Continuations
+
+There are three different ways in which continuations are consumed:
+`cont.{resume,throw,bind}`. A continuation is resumed with a
+particular handler with `cont.resume`. A continuation is aborted with
+`cont.throw`. A continuation is partially applied with `cont.bind`.
+
+In order to ensure that continuations are one-shot,
+`cont.{resume,throw,bind}` destructively modify the continuation
+object such that any subsequent use of the same continuation object
+will result in a trap.
 
 ## Examples
 
@@ -1003,35 +1011,28 @@ a "hole" on stack 2, that can be filled by an invocation of
 The current proposal does not require a cycle-detecting garbage
 collector as the linearity of continuations guarantees that there are
 no cycles in continuation objects. In theory, we could do without any
-garbage collection at all if we took seriously the idea that failure
-to use a continuation constitutes a bug in the producer. In practice,
-we expect that for many systems the only feasible way to ensure that
-continuations are always used (or at least deallocated) is to use some
-form of garbage collection, such as a reference counting. Thus, in
-practice, we envisage Wasm implementations relying on some form of
-garbage collection, even if it is just based on reference counting.
+automated memory management at all if we took seriously the idea that
+failure to use a continuation constitutes a bug in the producer. In
+practice, we expect that for many systems the only feasible way to
+ensure that continuations are always used (or at least deallocated) is
+to use some form of automated memory management, such as a reference
+counting.
 
-### Static Control Tag Dispatch
+### Linear vs Constant Time Dispatch
 
-SL: This heading is misleading as both forms of dispatch discussed
-here are dynamic! The question is really one of linear vs
-constant-time dynamic dispatch.
-
-The instruction `cont.suspend` is designed to perform dynamic dispatch
-on its provided control tag as an invocation of `cont.suspend` cannot
-in general know a priori which stacks (if any) in the active chain
-handles its supplied control tag. A compelling aspect of dynamic
-dispatch is that it is a conservative extension to Wasm in the sense
-that it does not alter any existing instructions or types. It also
-enables control abstractions to be composed in a modular way, as is. A
-potential problem is that dynamic dispatch can incur a linear runtime
-cost, especially if we think in terms of segmented stacks, where
-`cont.suspend` must search the active stack chain for a suitable
-handler for its argument. To guarantee O(1) transfer of control, some
-form of static dispatch is necessary. In order to dispatch statically
-we would need to know the target stack a priori, which implies the
-need for either maintaining a shadow stack or passing around map of
-control tags to handler addresses.
+The `cont.suspend` instruction relies on traversing a stack of
+handlers in order to find the appropriate handler, similarly to
+exception handling. A potential problem is that this can incur a
+linear runtime cost, especially if we think in terms of segmented
+stacks, where `cont.suspend` must search the active stack chain for a
+suitable handler for its argument. Practical experience from Multicore
+OCaml suggests that for critical use cases (async/await, lightweight
+threads, actors, etc.) the depth of the handler stack tends to be
+small so the cost of this linear traversal is negligible. Nonetheless,
+future applications may benefit from constant-time dispatch. To enable
+constant-time dispatch we would need to know the target stack a
+priori, which might be acheived either by maintaining a shadow stack
+or by extending `cont.suspend` to explicitly target a named handler.
 
 ### Symmetric Transfer of Control
 
@@ -1050,12 +1051,13 @@ Luke, Sam)
 ### Control/Prompt as an Alternative Basis
 
 An alternative to typed continuations is to use more classical
-delimited continuations via operators such as shift/reset and
-control/prompt. As seen in the examples section control/prompt can be
-viewed as a special instance of our proposal with a single control tag
-`control` and a handler for each `prompt`. Thus every non-local
-control flow abstraction has to be codified via a single control tag,
-which makes static typing considerably more difficult.
+delimited continuations via operators such as control/prompt and
+shift/reset. As illustrated in the examples section, control/prompt
+can be viewed as a special instance of the current proposal with a
+single control tag `control` and a handler for each `prompt`. Thus
+every non-local control flow abstraction has to be codified via a
+single control tag, which makes static typing considerably more
+difficult.
 
 SL: The following is not really true: answer-type modification makes
 the type system more expressive, but it's perfectly sound to consider
@@ -1070,7 +1072,10 @@ which would be a fairly profound addition to the Wasm type system
 
 SL: the business about constant-time dispatch is perhaps only relevant
 for tail-resumptive handlers, as in the general case one has to
-construct the continuation, which may take linear time anyway.
+construct the continuation, which may take linear time anyway... but
+maybe their exist more interesting representations continuation
+representations that could support constant-time dispatch for
+non-tail-resumptive handlers too.
 
 A handler is said to be *tail-resumptive* if the handler invokes the
 continuation in tail-position in every control tag clause. The
@@ -1103,12 +1108,19 @@ it is natural to envisage a future iteration of this proposal that
 includes support for multi-shot continuations by way of a continuation
 clone instruction.
 
+TODO: shallow vs deep
 
 TODO: named handlers
 
 TODO: first-class tags
 
-TODO: polymorphism
+TODO: preemption / asynchrony / interrupts
+
+TODO: how do we interact with polymorphism?
+
+TODO: parametric tags / existential types?
+
+TODO: tag subtyping?
 
 TODO: compare to asyncify?
 
