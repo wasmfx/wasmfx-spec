@@ -1034,19 +1034,94 @@ constant-time dispatch we would need to know the target stack a
 priori, which might be acheived either by maintaining a shadow stack
 or by extending `cont.suspend` to explicitly target a named handler.
 
-### Symmetric Transfer of Control
+### Named Handlers
 
-The proposal is tailored for asymmetric transfer of control, meaning
-that if a child stack wants to transfer control to one of its siblings
-it must first transfer control to its parent in order for it to
-transfer control to the designated sibling. Symmetric transfer of
-control would allow to side-step the parent and transfer control
-immediately to the sibling. Such a facility is not ruled out by the
-present proposal, but it would likely require an additional
-instruction and some way to identify stacks by name.
+We can accommodate named handlers by introducing a new reference type
+`handler t*`, which essentially is a unique prompt created by
+executing a variant of the `resume` instruction and is passed to the
+continuation:
 
-SL: TODO: spell out the details of the design we sketched (Andreas,
-Luke, Sam)
+```wat
+  cont.resume_with (event $tag $handler)* : [ t1* (cont $ft) ] -> [ t2* ]
+  where:
+   - $ft = [ (handler t2*) t1* ] -> [ t2* ]
+```
+
+The handler reference is similar to a prompt in a system of
+multi-prompt continuations. However, since it is created fresh for
+each handler, multiple activations of the same prompt cannot exist by
+construction.
+
+This instruction is complemented by an instruction for suspending to a
+specific handler:
+
+```wat
+  cont.suspend_to $tag : [ t1* (handler t3*) ] -> [ t2* ]
+  where:
+  - $tag : [ t1* ] -> [ t2* ]
+```
+
+If the handler is not currently active, e.g., because an outer handler
+has been suspended, then this instruction would trap.
+
+### Direct Switching
+
+The current proposal uses the asymmetric suspend/resume pair of
+primitives that is characteristic of effect handlers. It does not
+include a symmetric way of switching to another continuation directly,
+without going through a handler, and it is conceivable that the double
+hop through a handler might involve unnecessary overhead for use cases
+like lightweight threading.
+
+Though there is currently no evidence that the double hop overhead is
+significant in practice, if it does turn out to be important for some
+applications then the current proposal can be extended with a more
+symmetric `switch_to` primitive.
+
+Given named handlers, it is possible to introduce a somewhat magic
+instruction for switching directly to another continuation:
+
+```wat
+  cont.switch_to : [ t1* (cont $ft1) (handler t3*) ] -> [ t2* ]
+  where:
+   - $ft1 = [ (handler t3*) (cont $ft2) t1* ] -> [ t3* ]
+   - $ft2 = [ t2* ] -> [ t3* ]
+```
+
+This behaves as if there was a built-in tag
+
+```wat
+  (tag Switch (param t1* (cont $ft1)) (result t3*))
+```
+
+with which the computation suspends to the handler, and the handler
+implicitly handles this by resuming to the continuation argument,
+thereby effectively switching to it in one step. Like `suspend_to`,
+this would trap if the handler was not currently active.
+
+The fact that the handler implicitly resumes, passing itself as a
+handler to the target continuation, makes this construct behave like a
+deep handler, which is slightly at odds with the rest of the proposal.
+
+In addition to the handler, `switch_to` also passes the new
+continuation to the target, which allows the target to `switch_to`
+back to it in a symmetric fashion. Notably, in such a use case, `$ft1`
+and `$ft2` would be the same type (and hence recursive).
+
+In fact, symmetric switching need not necessarily be tied to named
+handlers, since there could also be an indirect version with dynamic
+handler lookup:
+
+```wat
+  cont.switch : [ t1* (cont $ft1) ] -> [ t2* ]
+  where:
+  - $ft1 = [ (cont $ft2) t1* ] -> [ t3* ]
+  - $ft2 = [ t2* ] -> [ t3* ]
+```
+
+It seems undesirable that every handler implicitly handles the
+built-in `Switch` tag, so this should be opt-in by a mode flag on the
+resume instruction(s).
 
 ### Control/Prompt as an Alternative Basis
 
