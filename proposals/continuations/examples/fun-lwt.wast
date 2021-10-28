@@ -3,16 +3,16 @@
 ;; interface to lightweight threads
 (module $lwt
   (type $func (func))
-  (event $yield (export "yield"))
-  (event $fork (export "fork") (param (ref $func)))
+  (tag $yield (export "yield"))
+  (tag $fork (export "fork") (param (ref $func)))
 )
 (register "lwt")
 
 (module $example
   (type $func (func))
   (type $cont (cont $func))
-  (event $yield (import "lwt" "yield"))
-  (event $fork (import "lwt" "fork") (param (ref $func)))
+  (tag $yield (import "lwt" "yield"))
+  (tag $fork (import "lwt" "fork") (param (ref $func)))
 
   (func $log (import "spectest" "print_i32") (param i32))
 
@@ -116,8 +116,8 @@
   (type $func (func))
   (type $cont (cont $func))
 
-  (event $yield (import "lwt" "yield"))
-  (event $fork (import "lwt" "fork") (param (ref $func)))
+  (tag $yield (import "lwt" "yield"))
+  (tag $fork (import "lwt" "fork") (param (ref $func)))
 
   (func $queue-empty (import "queue" "queue-empty") (result i32))
   (func $dequeue (import "queue" "dequeue") (result (ref null $cont)))
@@ -136,7 +136,7 @@
     (if (ref.is_null (local.get $r)) (then (return)))
     (block $on_yield (result (ref $cont))
       (block $on_fork (result (ref $func) (ref $cont))
-        (resume (event $yield $on_yield) (event $fork $on_fork) (local.get $r))
+        (resume (tag $yield $on_yield) (tag $fork $on_fork) (local.get $r))
         (call $dequeue)
         (return_call $lwt-tk)
       ) ;;   $on_fork (result (ref $func) (ref $cont))
@@ -155,7 +155,7 @@
     (if (ref.is_null (local.get $r)) (then (return)))
     (block $on_yield (result (ref $cont))
       (block $on_fork (result (ref $func) (ref $cont))
-        (resume (event $yield $on_yield) (event $fork $on_fork) (local.get $r))
+        (resume (tag $yield $on_yield) (tag $fork $on_fork) (local.get $r))
         (call $dequeue)
         (return_call $lwt-kt)
       ) ;;   $on_fork (result (ref $func) (ref $cont))
@@ -172,7 +172,7 @@
     (if (ref.is_null (local.get $r)) (then (return)))
     (block $on_yield (result (ref $cont))
       (block $on_fork (result (ref $func) (ref $cont))
-        (resume (event $yield $on_yield) (event $fork $on_fork) (local.get $r))
+        (resume (tag $yield $on_yield) (tag $fork $on_fork) (local.get $r))
         (call $dequeue)
         (return_call $lwt-ykt)
       ) ;;   $on_fork (result (ref $func) (ref $cont))
@@ -191,7 +191,7 @@
     (if (ref.is_null (local.get $r)) (then (return)))
     (block $on_yield (result (ref $cont))
       (block $on_fork (result (ref $func) (ref $cont))
-        (resume (event $yield $on_yield) (event $fork $on_fork) (local.get $r))
+        (resume (tag $yield $on_yield) (tag $fork $on_fork) (local.get $r))
         (call $dequeue)
         (return_call $lwt-ytk)
       ) ;;   $on_fork (result (ref $func) (ref $cont))
