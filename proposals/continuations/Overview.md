@@ -60,7 +60,7 @@ Based on [typed reference proposal](https://github.com/WebAssembly/function-refe
 * New store component `tags` for allocated tags
   - `S ::= {..., tags <taginst>*}`
 
-* An *tag instance* represents a control tag
+* A *tag instance* represents a control tag
   - `taginst ::= {type <tagtype>}`
 
 * New store component `conts` for allocated continuations
