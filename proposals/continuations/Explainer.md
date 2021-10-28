@@ -211,10 +211,10 @@ resumes the continuation under a named *handler*, which handles
 subsequent control suspensions within the continuation.
 
 ```wat
-cont.resume (tag $tag $handler)* : [tr* (cont ([tr*] -> [t2*]))] -> [t2*]
+resume (tag $tag $handler)* : [tr* (cont ([tr*] -> [t2*]))] -> [t2*]
 ```
 
-The `cont.resume` instruction is parameterised by a collection of *tag
+The `resume` instruction is parameterised by a collection of *tag
 clauses*, each of which maps a control tag name to a handler for the
 corresponding operation. This handler is a label that denotes a
 pointer into the Wasm code. The instruction fully consumes its
@@ -226,11 +226,11 @@ performing "an abortive action" which causes the stack to be unwound.
 
 
 ```wat
-cont.throw (exception $exn) : [tp* (cont ([tr*] -> [t2*]))] -> [t2*]
+resume_throw (exception $exn) : [tp* (cont ([tr*] -> [t2*]))] -> [t2*]
 ```
 
-The instruction `cont.throw` is parameterised by the exception to be
-raised at the control tag invocation site. As with `cont.resume`, this
+The instruction `resume_throw` is parameterised by the exception to be
+raised at the control tag invocation site. As with `resume`, this
 instruction also fully consumes its continuation
 argument. Operationally, this instruction raises the exception `$exn`
 with parameters of type `tp*` at the control tag invocation point in
@@ -244,11 +244,11 @@ invoking one of the declared control tags.
 
 
 ```wat
-cont.suspend $tag : [tp*] -> [tr*]
+suspend $tag : [tp*] -> [tr*]
 
 ```
 
-The instruction `cont.suspend` invokes the control tag named `$tag`
+The instruction `suspend` invokes the control tag named `$tag`
 with arguments of types `tp*`. Operationally, the instruction
 transfers control out of the continuation to the nearest enclosing
 handler for `$tag`. This behaviour is similar to how raising an
@@ -278,7 +278,7 @@ The instruction `cont.bind` binds the arguments of type `tp*` to the
 continuation `$ct`, yielding a modified continuation which expects
 fewer arguments. This instruction also consumes its continuation
 argument, and yields a new continuation that can be supplied to either
-`cont.{resume,throw,bind}`.
+`resume`,`resume_throw`, or `cont.bind`.
 
 ### Trapping Continuations
 
@@ -299,10 +299,10 @@ given by `instr*`. Operationally, `barrier` may be viewed as a
 
 ### Producing Continuations
 
-There are three different ways in which continuations are produced:
-`cont.{new,suspend,bind}`. A fresh continuation object is allocated
-with `cont.new` and the current continuation is reused with
-`cont.suspend` and `cont.bind`.
+There are three different ways in which continuations are produced
+(`cont.new,suspend,cont.bind`). A fresh continuation object is
+allocated with `cont.new` and the current continuation is reused with
+`suspend` and `cont.bind`.
 
 The `cont.bind` instruction is directly analogous to the mildly
 controversial `func.bind` instruction from the function references
@@ -313,13 +313,13 @@ created by preallocating one slot for each continuation argument.
 
 ### Consuming Continuations
 
-There are three different ways in which continuations are consumed:
-`cont.{resume,throw,bind}`. A continuation is resumed with a
-particular handler with `cont.resume`. A continuation is aborted with
-`cont.throw`. A continuation is partially applied with `cont.bind`.
+There are three different ways in which continuations are consumed
+(`resume,resume_throw,cont.bind`). A continuation is resumed with a
+particular handler with `resume`. A continuation is aborted with
+`resume_throw`. A continuation is partially applied with `cont.bind`.
 
 In order to ensure that continuations are one-shot,
-`cont.{resume,throw,bind}` destructively modify the continuation
+`resume,resume_throw,cont.bind` destructively modify the continuation
 object such that any subsequent use of the same continuation object
 will result in a trap.
 
@@ -891,7 +891,7 @@ by linking children to their parent.
  |                       |
  | ...                   |
  |                       |
- | (cont.resume $h1 $c); |
+ | (resume $h1 $c); |
 >| $c = (cont.new $f)    |
  |                       |
  .                       .
@@ -913,7 +913,7 @@ by `$f`.
  | ...                 |
  |                     |                 (suspended)
  |                     |           |---------------------|
->| cont.resume $h1 $c ------------>| $f()                |
+>| resume $h1 $c ------------>| $f()                |
  .                     .           .                     .
  .                     .           .                     .
                                    .                     .
@@ -921,7 +921,7 @@ by `$f`.
 ```
 
 Stack 1 maintains control after the creation of stack 2, and thus
-execution continues on stack 1. The next instruction, `cont.resume`
+execution continues on stack 1. The next instruction, `resume`
 suspends stack 1 and transfers control to new stack 2. Before
 transferring control, the instruction installs a delimiter `$h1` on
 stack 1. The transfer of control reverses the parent-child link, such
@@ -963,8 +963,8 @@ continues on stack 2.
 ```
 
 As execution continues on stack 2 it may eventually perform a
-`cont.suspend`, which will cause another transfer of
-control. Supposing it invokes `cont.suspend` with some `$tag` handled
+`suspend`, which will cause another transfer of
+control. Supposing it invokes `suspend` with some `$tag` handled
 by `$h1`, then stack 2 will transfer control back to stack 1.
 
 
@@ -977,7 +977,7 @@ by `$h1`, then stack 2 will transfer control back to stack 1.
  |                     |                 (active)
  |                     |       ----|---------------------|
  | $h1                 |<-----/    | ...                 |
- .                     .          >| cont.suspend $tag   |
+ .                     .          >| suspend $tag   |
  .                     .           .                     .
  .                     .           .                     .
                                    .                     .
@@ -985,7 +985,7 @@ by `$h1`, then stack 2 will transfer control back to stack 1.
 
 The suspension reverses the parent-child link again, and leaves behind
 a "hole" on stack 2, that can be filled by an invocation of
-`cont.resume`.
+`resume`.
 
 ```ioke
       (stack 1)                         (stack 2)
@@ -1020,11 +1020,11 @@ counting.
 
 ### Linear vs Constant Time Dispatch
 
-The `cont.suspend` instruction relies on traversing a stack of
+The `suspend` instruction relies on traversing a stack of
 handlers in order to find the appropriate handler, similarly to
 exception handling. A potential problem is that this can incur a
 linear runtime cost, especially if we think in terms of segmented
-stacks, where `cont.suspend` must search the active stack chain for a
+stacks, where `suspend` must search the active stack chain for a
 suitable handler for its argument. Practical experience from Multicore
 OCaml suggests that for critical use cases (async/await, lightweight
 threads, actors, etc.) the depth of the handler stack tends to be
@@ -1032,7 +1032,7 @@ small so the cost of this linear traversal is negligible. Nonetheless,
 future applications may benefit from constant-time dispatch. To enable
 constant-time dispatch we would need to know the target stack a
 priori, which might be acheived either by maintaining a shadow stack
-or by extending `cont.suspend` to explicitly target a named handler.
+or by extending `suspend` to explicitly target a named handler.
 
 ### Named Handlers
 
@@ -1042,7 +1042,7 @@ executing a variant of the `resume` instruction and is passed to the
 continuation:
 
 ```wat
-  cont.resume_with (event $tag $handler)* : [ t1* (cont $ft) ] -> [ t2* ]
+  resume_with (event $tag $handler)* : [ t1* (cont $ft) ] -> [ t2* ]
   where:
    - $ft = [ (handler t2*) t1* ] -> [ t2* ]
 ```
@@ -1056,7 +1056,7 @@ This instruction is complemented by an instruction for suspending to a
 specific handler:
 
 ```wat
-  cont.suspend_to $tag : [ t1* (handler t3*) ] -> [ t2* ]
+  suspend_to $tag : [ t1* (handler t3*) ] -> [ t2* ]
   where:
   - $tag : [ t1* ] -> [ t2* ]
 ```
@@ -1175,7 +1175,7 @@ an extension for distinguishing tail-resumptive handlers.
 Continuations in this proposal are *single-shot* (aka *linear*),
 meaning that they must be invoked exactly once (though this is not
 statically enforced). A continuation can be invoked either by resuming
-it (with `cont.resume`) or by aborting it (with `cont.throw`). Some
+it (with `resume`) or by aborting it (with `resume_throw`). Some
 applications such as backtracking, probabilistic programming, and
 process duplication exploit *multi-shot* continuations, but none of
 the critical use cases require multi-shot continuations. Nevertheless,
