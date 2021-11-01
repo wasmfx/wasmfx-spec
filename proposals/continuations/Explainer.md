@@ -318,8 +318,8 @@ There are three different ways in which continuations are consumed
 particular handler with `resume`. A continuation is aborted with
 `resume_throw`. A continuation is partially applied with `cont.bind`.
 
-In order to ensure that continuations are one-shot,
-`resume,resume_throw,cont.bind` destructively modify the continuation
+In order to ensure that continuations are one-shot, `resume`,
+`resume_throw`, and `cont.bind` destructively modify the continuation
 object such that any subsequent use of the same continuation object
 will result in a trap.
 
@@ -1004,7 +1004,7 @@ a "hole" on stack 2, that can be filled by an invocation of
 
 
 
-## FAQ
+## Design Considerations and Extensions
 
 ### Memory Management
 

@@ -143,8 +143,7 @@
         (local.set $nextk)                      ;; current thread
         (call $enqueue) ;; new thread
         (br $l)
-      )
-      ;;     $on_yield (result (ref $cont))
+      ) ;;   $on_yield (result (ref $cont))
       (local.set $nextk)  ;; carry on with current thread
       (br $l)
     )
@@ -174,8 +173,7 @@
         (local.set $nextk)                      ;; current thread
         (call $enqueue) ;; new thread
         (br $l)
-      )
-      ;;     $on_yield (result (ref $cont))
+      ) ;;   $on_yield (result (ref $cont))
       (call $enqueue)                    ;; current thread
       (local.set $nextk (call $dequeue)) ;; next thread
       (br $l)
@@ -198,8 +196,7 @@
         (call $enqueue)                            ;; current thread
         (local.set $nextk) ;; new thread
         (br $l)
-      )
-      ;;     $on_yield (result (ref $cont))
+      ) ;;   $on_yield (result (ref $cont))
       (call $enqueue)                    ;; current thread
       (local.set $nextk (call $dequeue)) ;; next thread
       (br $l)
@@ -223,8 +220,7 @@
         (call $enqueue) ;; new thread
         (local.set $nextk (call $dequeue))      ;; next thread
         (br $l)
-      )
-      ;;     $on_yield (result (ref $cont))
+      ) ;;   $on_yield (result (ref $cont))
       (call $enqueue)                    ;; current thread
       (local.set $nextk (call $dequeue)) ;; next thread
       (br $l)
@@ -249,8 +245,7 @@
         (call $enqueue (local.get $nextk))      ;; current thread
         (local.set $nextk (call $dequeue))      ;; next thread
         (br $l)
-      )
-      ;;     $on_yield (result (ref $cont))
+      ) ;;   $on_yield (result (ref $cont))
       (call $enqueue)                    ;; current thread
       (local.set $nextk (call $dequeue)) ;; next thread
       (br $l)
