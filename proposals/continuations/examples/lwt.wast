@@ -5,8 +5,8 @@
   (type $func (func))       ;; [] -> []
   (type $cont (cont $func)) ;; cont ([] -> [])
 
-  (event $yield (export "yield"))                   ;; [] -> []
-  (event $fork (export "fork") (param (ref $cont))) ;; [cont ([] -> [])] -> []
+  (tag $yield (export "yield"))                   ;; [] -> []
+  (tag $fork (export "fork") (param (ref $cont))) ;; [cont ([] -> [])] -> []
 )
 (register "lwt")
 
@@ -14,8 +14,8 @@
   (type $func (func))       ;; [] -> []
   (type $cont (cont $func)) ;; cont ([] -> [])
 
-  (event $yield (import "lwt" "yield"))                   ;; [] -> []
-  (event $fork (import "lwt" "fork") (param (ref $cont))) ;; [cont ([] -> [])] -> []
+  (tag $yield (import "lwt" "yield"))                   ;; [] -> []
+  (tag $fork (import "lwt" "fork") (param (ref $cont))) ;; [cont ([] -> [])] -> []
 
   (func $log (import "spectest" "print_i32") (param i32))
 
@@ -120,8 +120,8 @@
   (type $func (func))       ;; [] -> []
   (type $cont (cont $func)) ;; cont ([] -> [])
 
-  (event $yield (import "lwt" "yield"))                   ;; [] -> []
-  (event $fork (import "lwt" "fork") (param (ref $cont))) ;; [cont ([] -> [])] -> []
+  (tag $yield (import "lwt" "yield"))                   ;; [] -> []
+  (tag $fork (import "lwt" "fork") (param (ref $cont))) ;; [cont ([] -> [])] -> []
 
   (func $queue-empty (import "queue" "queue-empty") (result i32))
   (func $dequeue (import "queue" "dequeue") (result (ref null $cont)))
@@ -135,8 +135,8 @@
       (block $on_yield (result (ref $cont))
         (block $on_fork (result (ref $cont) (ref $cont))
           (resume
-            (event $yield $on_yield)
-            (event $fork $on_fork)
+            (tag $yield $on_yield)
+            (tag $fork $on_fork)
             (local.get $nextk)
           )
           (local.set $nextk (call $dequeue))
@@ -166,8 +166,8 @@
       (block $on_yield (result (ref $cont))
         (block $on_fork (result (ref $cont) (ref $cont))
           (resume
-            (event $yield $on_yield)
-            (event $fork $on_fork)
+            (tag $yield $on_yield)
+            (tag $fork $on_fork)
             (local.get $nextk)
           )
           (local.set $nextk (call $dequeue))
@@ -190,8 +190,8 @@
       (block $on_yield (result (ref $cont))
         (block $on_fork (result (ref $cont) (ref $cont))
           (resume
-            (event $yield $on_yield)
-            (event $fork $on_fork)
+            (tag $yield $on_yield)
+            (tag $fork $on_fork)
             (local.get $nextk)
           )
           (local.set $nextk (call $dequeue))
@@ -214,8 +214,8 @@
       (block $on_yield (result (ref $cont))
         (block $on_fork (result (ref $cont) (ref $cont))
           (resume
-            (event $yield $on_yield)
-            (event $fork $on_fork)
+            (tag $yield $on_yield)
+            (tag $fork $on_fork)
             (local.get $nextk)
           )
           (local.set $nextk (call $dequeue))
@@ -239,8 +239,8 @@
       (block $on_yield (result (ref $cont))
         (block $on_fork (result (ref $cont) (ref $cont))
           (resume
-            (event $yield $on_yield)
-            (event $fork $on_fork)
+            (tag $yield $on_yield)
+            (tag $fork $on_fork)
             (local.get $nextk)
           )
           (local.set $nextk (call $dequeue))

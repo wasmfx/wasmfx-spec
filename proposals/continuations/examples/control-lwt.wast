@@ -24,10 +24,10 @@
   ;;
   ;; (Technically this is control0/prompt0 rather than
   ;; control/prompt.)
-  (event $control (export "control") (param (ref $cont-func)))    ;; control : ([cont ([] -> [])] -> []) -> []
+  (tag $control (export "control") (param (ref $cont-func)))    ;; control : ([cont ([] -> [])] -> []) -> []
   (func $prompt (export "prompt") (param $nextk (ref null $cont)) ;; prompt : cont ([] -> []) -> []
     (block $on_control (result (ref $cont-func) (ref $cont))
-       (resume (event $control $on_control)
+       (resume (tag $control $on_control)
                (local.get $nextk))
        (return)
     ) ;;   $on_control (param (ref $cont-func) (ref $cont))
@@ -39,7 +39,7 @@
 (register "control")
 
 ;; With control/prompt we use functions for abstracting over yield and
-;; fork operations rather than events.
+;; fork operations rather than tags.
 
 (module $example
   (type $func (func))       ;; [] -> []
@@ -184,7 +184,7 @@
      $fork-sync $fork-kt $fork-tk $fork-ykt $fork-ytk)
 
   ;; control/prompt interface
-  (event $control (import "control" "control") (param (ref $cont-func)))     ;; control : ([cont ([] -> [])] -> []) -> []
+  (tag $control (import "control" "control") (param (ref $cont-func)))     ;; control : ([cont ([] -> [])] -> []) -> []
   (func $prompt (import "control" "prompt") (param $nextk (ref null $cont))) ;; prompt : cont ([] -> []) -> []
 
   ;; generic boilerplate scheduler

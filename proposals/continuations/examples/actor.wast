@@ -9,10 +9,10 @@
   ;; spawn : [cont ([] -> [])] -> [i32]
   ;; send : [i32 i32] -> []
   ;; recv : [] -> [i32]
-  (event $self (export "self") (result i32))
-  (event $spawn (export "spawn") (param (ref $cont)) (result i32))
-  (event $send (export "send") (param i32 i32))
-  (event $recv (export "recv") (result i32))
+  (tag $self (export "self") (result i32))
+  (tag $spawn (export "spawn") (param (ref $cont)) (result i32))
+  (tag $send (export "send") (param i32 i32))
+  (tag $recv (export "recv") (result i32))
 )
 (register "actor")
 
@@ -28,10 +28,10 @@
   ;; spawn : [cont ([] -> [])] -> [i32]
   ;; send : [i32 i32] -> []
   ;; recv : [] -> [i32]
-  (event $self (import "actor" "self") (result i32))
-  (event $spawn (import "actor" "spawn") (param (ref $cont)) (result i32))
-  (event $send (import "actor" "send") (param i32 i32))
-  (event $recv (import "actor" "recv") (result i32))
+  (tag $self (import "actor" "self") (result i32))
+  (tag $spawn (import "actor" "spawn") (param (ref $cont)) (result i32))
+  (tag $send (import "actor" "send") (param i32 i32))
+  (tag $recv (import "actor" "recv") (result i32))
 
   (elem declare func $next)
 
@@ -272,10 +272,10 @@
   ;; spawn : [cont ([] -> [])] -> [i32]
   ;; send : [i32 i32] -> []
   ;; recv : [] -> [i32]
-  (event $self (import "actor" "self") (result i32))
-  (event $spawn (import "actor" "spawn") (param (ref $cont)) (result i32))
-  (event $send (import "actor" "send") (param i32 i32))
-  (event $recv (import "actor" "recv") (result i32))
+  (tag $self (import "actor" "self") (result i32))
+  (tag $spawn (import "actor" "spawn") (param (ref $cont)) (result i32))
+  (tag $send (import "actor" "send") (param i32 i32))
+  (tag $recv (import "actor" "recv") (result i32))
 
   (elem declare func $recv-againf)
 
@@ -325,10 +325,10 @@
         (block $on_spawn (result (ref $cont) (ref $i-cont))
           (block $on_send (result i32 i32 (ref $cont))
             (block $on_recv (result (ref $i-cont))
-               (resume (event $self $on_self)
-                       (event $spawn $on_spawn)
-                       (event $send $on_send)
-                       (event $recv $on_recv)
+               (resume (tag $self $on_self)
+                       (tag $spawn $on_spawn)
+                       (tag $send $on_send)
+                       (tag $recv $on_recv)
                        (local.get $nextk)
                )
                (local.set $mine (call $dequeue-mb))
