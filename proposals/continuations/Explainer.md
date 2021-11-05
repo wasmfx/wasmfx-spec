@@ -1125,43 +1125,68 @@ resume instruction(s).
 
 ### Control/Prompt as an Alternative Basis
 
-An alternative to typed continuations is to use more classical
-delimited continuations via operators such as control/prompt and
+An alternative to our typed continuations proposal is to use more
+established delimited control operators such as control/prompt and
 shift/reset. As illustrated in the examples section, control/prompt
 can be viewed as a special instance of the current proposal with a
-single control tag `control` and a handler for each `prompt`. Thus
-every non-local control flow abstraction has to be codified via a
-single control tag, which makes static typing considerably more
-difficult.
+single universal control tag `control` and a handler for each
+`prompt`.
 
-SL: The following is not really true: answer-type modification makes
-the type system more expressive, but it's perfectly sound to consider
-rules that preclude answer-type modification.
+As `control` amounts to a universal control tag it correspondingly has
+a higher-order type. As illustrated by the example, this requires more
+complicated types than with the current proposal and depends on
+greater use of function closures.
 
-In order to preserve static type-safety, operators like shift/reset
-and control/prompt require something like *answer-type modification*,
-which would be a fairly profound addition to the Wasm type system
-[Danvy&Filinski'89, Cong et al. '21].
+When considered as a source language feature effect handlers are
+preferable to control/prompt because they are more modular and easier
+to reason about. Effect handlers naturally provide a separation of
+concerns. Users program to an effect interface, whereas `control`
+allows (and indeed requires) them to essentially rewrite the
+implementation inline (in practice this is unmanageable, so one
+abstracts over a few key behaviours using functions as illustrated in
+the example). Of course, intermediate languages have different
+requirements to source languages, so modularity and ease of reasoning
+may be less critical. Nonetheless, they should not be discounted
+entirely.
+
+### Coupling of Continuation Capture and Dispatch
+
+A possible concern with the current design is that it relies on a
+specific form of dispatch based on tags. Suspending not only captures
+the current continuation up to the nearest prompt, but also dispatches
+to the handler clause associated with the given tag. It might be
+tempting to try to decouple continuation capture from dispatch, but it
+is unclear what other form of dispatch would be useful or whether
+there is a clean way to enable such decoupling.
+
+With control/prompt there is no coupling of continuation capture with
+dispatch, because there is no dispatch. But this is precisely because
+`control` behaves as a universal tag, which requires behaviour to be
+given inline via a closure, breaking modularity and necessitating a
+higher-order type even for simple uses of continuations like
+lightweight threads.
+
+This is not to say that control/prompt or a generalisation to
+multiprompt delimited continuations is necessarily a bad low-level
+implementation technique. For instance, the
+[libmprompt](https://github.com/koka-lang/libmprompt) C library
+implements effect handlers on top of multiprompt delimited
+continuations. However, a key difference there is that the C
+implementation does not require static stack typing, something that is
+fundamental to the design of Wasm. Thus, the implementation does not
+need to contend directly with the higher-order type of `control`.
 
 ### Tail-resumptive Handlers
-
-SL: the business about constant-time dispatch is perhaps only relevant
-for tail-resumptive handlers, as in the general case one has to
-construct the continuation, which may take linear time anyway... but
-maybe their exist more interesting representations continuation
-representations that could support constant-time dispatch for
-non-tail-resumptive handlers too.
 
 A handler is said to be *tail-resumptive* if the handler invokes the
 continuation in tail-position in every control tag clause. The
 canonical example of a tail-resumptive handler is dynamic binding
 (which can be useful to implement implicit parameters to
-computations). The key insight is that the control tag clauses of a
-tail-resumptive handler can be inlined at the control tag invocation
-sites, because they does not perform any fancy control flow
-manipulation, they simply "retrieve a value", as it were. The gain by
-inlining the clause definitions is that computation need not spend
-time constructing continuations.
+computations). The control tag clauses of a tail-resumptive handler
+can be inlined at the control tag invocation sites, because they do
+not perform any non-trivial control flow manipulation, they simply
+retrieve a value. Inlining clause definitions means that no time is
+spent constructing continuation objects.
 
 The present iteration of this proposal does not include facilities for
 identifying and inlining tail-resumptive handlers. None of the
@@ -1184,8 +1209,6 @@ includes support for multi-shot continuations by way of a continuation
 clone instruction.
 
 TODO: shallow vs deep
-
-TODO: named handlers
 
 TODO: first-class tags
 
