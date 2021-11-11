@@ -1208,6 +1208,35 @@ it is natural to envisage a future iteration of this proposal that
 includes support for multi-shot continuations by way of a continuation
 clone instruction.
 
+### Interoperability, Legacy Code, and the Barrier Instruction
+
+The barrier instruction provides a direct way of preventing control
+tags from being suspended outside a particular computation.
+
+Consider a module A written using an existing C/C++ compiler that
+targets a Wasm backend. Let us assume that module A depends on a
+second Wasm module B. Now suppose that the producer for module B is
+updated to take advantage of typed continuations. In order to ensure
+that suspensions arising in calls to B do not pass through A,
+potentially causing unexpected changes to the semantics of A, the
+producer for module A can ensure that all external calls are wrapped
+in the barrier instruction.
+
+It might seem preferable to somehow guarantee that support for typed
+continuations is not enabled by default, meaning that no changes to
+the producer for module A would be necessary. But it is unclear what
+such an approach would look like in practice and whether it would
+actually be feasible. However, again using the barrier instruction the
+producer for B could already make module B safe for linking with
+module A by wrapping the barrier instruction around all of its
+exported functions.
+
+Questions of Wasm interoperability and support for legacy code are
+largely orthogonal to the typed continuations proposal and similar
+issues already arise with extensions such as exceptions.
+
+
+
 TODO: shallow vs deep
 
 TODO: first-class tags
