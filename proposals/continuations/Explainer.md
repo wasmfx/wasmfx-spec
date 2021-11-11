@@ -165,13 +165,13 @@ interface for structured manipulation of the execution stack via
 The proposal adds a new reference type for continuations.
 
 ```wat
-(cont ([t1*] -> [t2*]))
+  (cont ([tp*] -> [tr*]))
 ```
 
-The continuation type is indexed by a function type, where `t1*`
+A continuation type is indexed by a function type, where `tp1*`
 describes the expected stack shape prior to resuming/starting the
-continuation, and `t2*` describes the stack shape after the
-continuation has run to completion.
+continuation (the parameter types), and `tr*` describes the stack
+shape after the continuation has run to completion (the return types).
 
 ### Declaring Control Tags
 
@@ -181,13 +181,15 @@ exception. A tag declaration provides the type signature of a control
 tag.
 
 ```wat
-(tag $tag (param tp*) (result tr*))
+  (tag $e (param tp*) (result tr*))
 ```
 
-The `$tag` is the name of the operation. The parameter types `tp*`
+The `$e` is the name of the control tag. The parameter types `tp*`
 describe the expected stack layout prior to invoking the tag, and the
 result types `tr*` describe the stack layout following an invocation
-of the operation.
+of the operation. In this document we will sometimes write `$e : [tp*]
+-> [tr*]` as shorthand for indicating that such a declaration is in
+scope.
 
 ### Creating Continuations
 
@@ -195,8 +197,10 @@ The following instruction creates a continuation in *suspended state*
 from a function.
 
 ```wat
-cont.new : [(ref ([t1*] -> [t2*])] -> [(cont ([t1*] -> [t2*]))]
-
+  cont.new $ct : [(ref $ft)] -> [(ref $ct)]
+  where:
+  - $ft = [t1*] -> [t2*]
+  - $ct = cont $ft
 ```
 
 The instruction expects the top of the stack to contain a reference to
@@ -206,27 +210,34 @@ computation that may perform non-local control flow.
 
 ### Invoking Continuations
 
-There are two ways to invoke (or run) a continuation. The first way
-resumes the continuation under a named *handler*, which handles
-subsequent control suspensions within the continuation.
+There are two ways to invoke (or run) a continuation.
+
+The first way to invoke a continuation resumes the continuation under
+a *handler*, which handles subsequent control suspensions within the
+continuation.
 
 ```wat
-resume (tag $tag $handler)* : [tr* (cont ([tr*] -> [t2*]))] -> [t2*]
+  resume (tag $e $l)* : [tp* (ref $ct)] -> [tr*]
+  where:
+  - $ct = cont ([tp*] -> [tr*])
 ```
 
-The `resume` instruction is parameterised by a collection of *tag
-clauses*, each of which maps a control tag name to a handler for the
-corresponding operation. This handler is a label that denotes a
-pointer into the Wasm code. The instruction fully consumes its
-continuation argument, meaning a continuation may be used only once.
+The `resume` instruction is parameterised by a handler defined by a
+collection of pairs of control tags and labels. Each pair maps a
+control tag to a label pointing to its corresponding handler code. The
+`resume` instruction consumes its continuation argument, meaning a
+continuation may be resumed only once.
 
 The second way to invoke a continuation is to raise an exception at
-the control tag invocation site. This effectively amounts to
-performing "an abortive action" which causes the stack to be unwound.
+the control tag invocation site. This amounts to performing "an
+abortive action" which causes the stack to be unwound.
 
 
 ```wat
-resume_throw (exception $exn) : [tp* (cont ([tr*] -> [t2*]))] -> [t2*]
+  resume_throw $exn : [tp* (ref $ct)])] -> [tr*]
+  where:
+  - $ct = cont ([ta*] -> [tr*])
+  - $exn : [tp*] -> []
 ```
 
 The instruction `resume_throw` is parameterised by the exception to be
@@ -234,8 +245,9 @@ raised at the control tag invocation site. As with `resume`, this
 instruction also fully consumes its continuation
 argument. Operationally, this instruction raises the exception `$exn`
 with parameters of type `tp*` at the control tag invocation point in
-the context of the supplied continuation.
-
+the context of the supplied continuation. As an exception is being
+raised (the continuation is not actually being supplied a value) the
+parameter types for the continuation `ta*` are unconstrained.
 
 ### Suspending Continuations
 
@@ -244,18 +256,19 @@ invoking one of the declared control tags.
 
 
 ```wat
-suspend $tag : [tp*] -> [tr*]
-
+  suspend $e : [tp*] -> [tr*]
+  where:
+  - $e : [tp*] -> [tr*]
 ```
 
-The instruction `suspend` invokes the control tag named `$tag`
-with arguments of types `tp*`. Operationally, the instruction
-transfers control out of the continuation to the nearest enclosing
-handler for `$tag`. This behaviour is similar to how raising an
-exception transfers control to the nearest exception handler that
-handles the exception. The key difference is that the continuation at
-the suspension point expects to be resumed later with arguments of
-types `tr*`.
+The instruction `suspend` invokes the control tag named `$e` with
+arguments of types `tp*`. Operationally, the instruction transfers
+control out of the continuation to the nearest enclosing handler for
+`$e`. This behaviour is similar to how raising an exception transfers
+control to the nearest exception handler that handles the
+exception. The key difference is that the continuation at the
+suspension point expects to be resumed later with arguments of types
+`tr*`.
 
 ### Binding Continuations
 
@@ -271,14 +284,17 @@ provides several example usages of `cont.bind`).
 
 
 ```wat
-cont.bind $ct : [tp* (cont ([tp* tp'*] -> [t2*]))] -> [(cont ([tp'*] -> [t2*]))]
+  cont.bind $ct2 : [tp1* (ref $ct1)] -> [(ref $ct2)]
+  where:
+  $ct1 = cont ([tp1 tp2*] -> [tr*])
+  $ct2 = cont ([tp2*] -> [tr*])
 ```
 
-The instruction `cont.bind` binds the arguments of type `tp*` to the
-continuation `$ct`, yielding a modified continuation which expects
-fewer arguments. This instruction also consumes its continuation
-argument, and yields a new continuation that can be supplied to either
-`resume`,`resume_throw`, or `cont.bind`.
+The instruction `cont.bind` binds the arguments of type `tp1*` to a
+continuation of type `$ct1`, yielding a modified continuation of type
+`$ct2` which expects fewer arguments. This instruction also consumes
+its continuation argument, and yields a new continuation that can be
+supplied to either `resume`,`resume_throw`, or `cont.bind`.
 
 ### Trapping Continuations
 
@@ -287,13 +303,16 @@ boundaries, we provide an instruction for explicitly trapping attempts
 at reifying stacks across language boundaries.
 
 ```wat
-barrier $label bt instr* : [t1*] -> [t2*]
+  barrier $label $bt instr* : [s*] -> [t*]
+  where:
+  - $bt = [s*] -> [t*]
+  - instr* : [s*] -> [t*]
 ```
 
 The `barrier` instruction is a block with label `$label`, block type
-`bt = [t1*] -> [t2*]`, and whose body is the instruction sequence
-given by `instr*`. Operationally, `barrier` may be viewed as a
-"catch-all" handler, that handles any control tag by invoking a trap.
+`$bt = [t1*] -> [t2*]`, whose body is the instruction sequence given
+by `instr*`. Operationally, `barrier` may be viewed as a "catch-all"
+handler, that handles any control tag by invoking a trap.
 
 ## Continuation Lifetime
 
@@ -964,7 +983,7 @@ continues on stack 2.
 
 As execution continues on stack 2 it may eventually perform a
 `suspend`, which will cause another transfer of
-control. Supposing it invokes `suspend` with some `$tag` handled
+control. Supposing it invokes `suspend` with some `$e` handled
 by `$h1`, then stack 2 will transfer control back to stack 1.
 
 
@@ -977,7 +996,7 @@ by `$h1`, then stack 2 will transfer control back to stack 1.
  |                     |                 (active)
  |                     |       ----|---------------------|
  | $h1                 |<-----/    | ...                 |
- .                     .          >| suspend $tag   |
+ .                     .          >| suspend $e     |
  .                     .           .                     .
  .                     .           .                     .
                                    .                     .
@@ -1042,9 +1061,10 @@ executing a variant of the `resume` instruction and is passed to the
 continuation:
 
 ```wat
-  resume_with (event $tag $handler)* : [ t1* (cont $ft) ] -> [ t2* ]
+  resume_with (tag $e $l)* : [ t1* (ref $ht) ] -> [ t2* ]
   where:
-   - $ft = [ (handler t2*) t1* ] -> [ t2* ]
+  - $ht = handler t2*
+  - $ct = cont ([ (ref $ht) t1* ] -> [ t2* ])
 ```
 
 The handler reference is similar to a prompt in a system of
@@ -1056,9 +1076,10 @@ This instruction is complemented by an instruction for suspending to a
 specific handler:
 
 ```wat
-  suspend_to $tag : [ t1* (handler t3*) ] -> [ t2* ]
+  suspend_to $e : [ s* (ref $ht) ] -> [ t* ]
   where:
-  - $tag : [ t1* ] -> [ t2* ]
+  - $ht = handler tr*
+  - $e : [ s* ] -> [ t* ]
 ```
 
 If the handler is not currently active, e.g., because an outer handler
@@ -1082,16 +1103,17 @@ Given named handlers, it is possible to introduce a somewhat magic
 instruction for switching directly to another continuation:
 
 ```wat
-  cont.switch_to : [ t1* (cont $ft1) (handler t3*) ] -> [ t2* ]
+  switch_to : [ t1* (ref $ct1) (ref $ht) ] -> [ t2* ]
   where:
-   - $ft1 = [ (handler t3*) (cont $ft2) t1* ] -> [ t3* ]
-   - $ft2 = [ t2* ] -> [ t3* ]
+  - $ht = handler t3*
+  - $ct1 = cont ([ (ref $ht) (ref $ct2$) t1* ] -> [ t3* ])
+  - $ct2 = cont ([ t2* ] -> [ t3* ])
 ```
 
 This behaves as if there was a built-in tag
 
 ```wat
-  (tag Switch (param t1* (cont $ft1)) (result t3*))
+  (tag Switch (param t1* (ref $ct1)) (result t3*))
 ```
 
 with which the computation suspends to the handler, and the handler
@@ -1104,19 +1126,19 @@ handler to the target continuation, makes this construct behave like a
 deep handler, which is slightly at odds with the rest of the proposal.
 
 In addition to the handler, `switch_to` also passes the new
-continuation to the target, which allows the target to `switch_to`
-back to it in a symmetric fashion. Notably, in such a use case, `$ft1`
-and `$ft2` would be the same type (and hence recursive).
+continuation to the target, which allows the target to switch back to
+it in a symmetric fashion. Notably, in such a use case, `$ct1` and
+`$ct2` would be the same type (and hence recursive).
 
 In fact, symmetric switching need not necessarily be tied to named
 handlers, since there could also be an indirect version with dynamic
 handler lookup:
 
 ```wat
-  cont.switch : [ t1* (cont $ft1) ] -> [ t2* ]
+  switch : [ t1* (ref $ct1) ] -> [ t2* ]
   where:
-  - $ft1 = [ (cont $ft2) t1* ] -> [ t3* ]
-  - $ft2 = [ t2* ] -> [ t3* ]
+  - $ct1 = cont ([ (ref $ct2) t1* ] -> [ t3* ])
+  - $ct2 = cont ([ t2* ] -> [ t3* ])
 ```
 
 It seems undesirable that every handler implicitly handles the
@@ -1226,10 +1248,10 @@ It might seem preferable to somehow guarantee that support for typed
 continuations is not enabled by default, meaning that no changes to
 the producer for module A would be necessary. But it is unclear what
 such an approach would look like in practice and whether it would
-actually be feasible. However, again using the barrier instruction the
-producer for B could already make module B safe for linking with
-module A by wrapping the barrier instruction around all of its
-exported functions.
+actually be feasible. In any case, using the barrier instruction the
+producer for B could make module B safe for linking with an unchanged
+module A by wrapping the barrier instruction around all of the
+functions exported by module B.
 
 Questions of Wasm interoperability and support for legacy code are
 largely orthogonal to the typed continuations proposal and similar
