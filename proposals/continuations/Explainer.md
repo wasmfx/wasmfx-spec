@@ -886,7 +886,327 @@ The output is as follows, demonstrating the various different scheduling behavio
 
 ### Async/await (TODO)
 
-### Delimited continuations (TODO)
+### Delimited continuations
+
+(The full code for this example is [here](examples/control-lwt.wast).)
+
+Conventional unstructured delimited continuations can be directly
+implemented using our typed continuations design. Here we illustrate
+how to implement lightweight threads on top of the control/prompt
+delimited control operators.
+
+First we implement control/prompt.
+
+```wasm
+;; interface to control/prompt
+(module $control
+  (type $func (func))       ;; [] -> []
+  (type $cont (cont $func)) ;; cont ([] -> [])
+
+  (type $cont-func (func (param (ref $cont)))) ;; [cont ([] -> [])] -> []
+  (type $cont-cont (cont $cont-func))          ;; cont ([cont ([] -> [])] -> [])
+
+  ;; Implementation of a generic delimited control operator using
+  ;; effect handlers.
+  ;;
+  ;; For lightweight threads we have no payload. More general types
+  ;; for control and prompt are:
+  ;;
+  ;;   control : [([contref ([ta*] -> [tr*])] -> [tr*])] -> [ta*]
+  ;;   prompt : [contref ([] -> [tr*])] -> [tr*]
+  ;;
+  ;; (We can also give more refined types if we want to support
+  ;; answer-type modification and various flavours of answer-type
+  ;; polymorphism - but these are well outside the scope of a Wasm
+  ;; proposal!)
+  ;;
+  ;; (Technically this is control0/prompt0 rather than
+  ;; control/prompt.)
+  (tag $control (export "control") (param (ref $cont-func)))    ;; control : [([contref ([] -> [])] -> [])] -> []
+  (func $prompt (export "prompt") (param $nextk (ref null $cont)) ;; prompt : [(contref ([] -> []))] -> []
+    (block $on_control (result (ref $cont-func) (ref $cont))
+       (resume (tag $control $on_control)
+               (local.get $nextk))
+       (return)
+    ) ;;   $on_control (param (ref $cont-func) (ref $cont))
+    (let (local $h (ref $cont-func)) (local $k (ref $cont))
+      (call_ref (local.get $k) (local.get $h))
+    )
+  )
+)
+(register "control")
+```
+
+The `$control` tag amounts to a universal control tag, which takes a
+second order function `$h` as an argument. The implementation of
+prompt is the universal handler for `$control`, which simply applies
+the second order function `$h` to the captured continuation.
+
+In the above code we have specialised `$control` and `$prompt` to the
+case where the continuation has no parameters and no resuls, as this
+suffices for implementing lightweight threads. A continuation
+parameter corresponds to the result of a control tag, so in the
+absence of parametric polymorphism, in order to simulate standard
+control tags in general we would need one copy of `$control` for each
+type of result we wanted to support.
+
+
+The following example is just like the one we implemented for
+lightweight threads using `$yield` and `$fork` tags decoupled from
+handlers for defining different schedulers. Here instead we
+parameterise the whole example by the behaviour of yielding and
+forking as `$yield` and `$fork` functions.
+
+```
+(module $example
+  (type $func (func))       ;; [] -> []
+  (type $cont (cont $func)) ;; cont ([] -> [])
+
+  (type $cont-func (func (param (ref $cont)))) ;; [cont ([] -> [])] -> []
+  (type $cont-cont (cont $cont-func))          ;; cont ([cont ([] -> [])] -> [])
+
+  (type $func-cont-func-func (func (param (ref $func)) (param (ref $cont-func)))) ;; ([] -> []) -> ([cont ([] -> [])] -> []) -> []
+  (type $func-cont-func-cont (cont $func-cont-func-func))                         ;; cont (([] -> []) -> ([cont ([] -> [])] -> []) -> [])
+
+  (func $log (import "spectest" "print_i32") (param i32))
+
+  (elem declare func $main $thread1 $thread2 $thread3)
+
+  (func $main (export "main") (param $yield (ref $func)) (param $fork (ref $cont-func))
+    (call $log (i32.const 0))
+    (call_ref
+      (cont.bind (type $cont) (local.get $yield) (local.get $fork)
+        (cont.new (type $func-cont-func-cont) (ref.func $thread1)))
+      (local.get $fork))
+    (call $log (i32.const 1))
+    (call_ref
+      (cont.bind (type $cont) (local.get $yield) (local.get $fork)
+        (cont.new (type $func-cont-func-cont) (ref.func $thread2)))
+      (local.get $fork))
+    (call $log (i32.const 2))
+    (call_ref
+      (cont.bind (type $cont) (local.get $yield) (local.get $fork)
+        (cont.new (type $func-cont-func-cont) (ref.func $thread3)))
+      (local.get $fork))
+    (call $log (i32.const 3))
+  )
+
+  (func $thread1 (param $yield (ref $func)) (param $fork (ref $cont-func))
+    (call $log (i32.const 10))
+    (call_ref (local.get $yield))
+    (call $log (i32.const 11))
+    (call_ref (local.get $yield))
+    (call $log (i32.const 12))
+  )
+
+  (func $thread2 (param $yield (ref $func)) (param $fork (ref $cont-func))
+    (call $log (i32.const 20))
+    (call_ref (local.get $yield))
+    (call $log (i32.const 21))
+    (call_ref (local.get $yield))
+    (call $log (i32.const 22))
+  )
+
+  (func $thread3 (param $yield (ref $func)) (param $fork (ref $cont-func))
+    (call $log (i32.const 30))
+    (call_ref (local.get $yield))
+    (call $log (i32.const 31))
+    (call_ref (local.get $yield))
+    (call $log (i32.const 32))
+  )
+)
+(register "example")
+```
+
+
+
+```wasm
+(module
+  (type $func (func))       ;; [] -> []
+  (type $cont (cont $func)) ;; cont ([] -> [])
+
+  (type $cont-func (func (param (ref $cont)))) ;; [contref ([] -> [])] -> []
+  (type $cont-cont (cont $cont-func))          ;; [(contref ([contref ([] -> [])]))] -> []
+
+  (type $func-cont-func-func (func (param (ref $func)) (param (ref $cont-func)))) ;; ([] -> []) -> ([cont ([] -> [])] -> []) -> []
+  (type $func-cont-func-cont (cont $func-cont-func-func))                         ;; cont (([] -> []) -> ([cont ([] -> [])] -> []) -> [])
+
+  (func $log (import "spectest" "print_i32") (param i32))
+
+  ;; queue interface
+  (func $queue-empty (import "queue" "queue-empty") (result i32))
+  (func $dequeue (import "queue" "dequeue") (result (ref null $cont)))
+  (func $enqueue (import "queue" "enqueue") (param $k (ref $cont)))
+
+  (elem declare func
+     $handle-yield-sync $handle-yield
+     $handle-fork-sync $handle-fork-kt $handle-fork-tk $handle-fork-ykt $handle-fork-ytk
+     $yield
+     $fork-sync $fork-kt $fork-tk $fork-ykt $fork-ytk)
+
+  ;; control/prompt interface
+  (tag $control (import "control" "control") (param (ref $cont-func)))     ;; control : ([cont ([] -> [])] -> []) -> []
+  (func $prompt (import "control" "prompt") (param $nextk (ref null $cont))) ;; prompt : cont ([] -> []) -> []
+
+  ;; generic boilerplate scheduler
+  ;;
+  ;; with control/prompt the core scheduler loop must be decoupled
+  ;; from the implementations of each operation (yield / fork) as the
+  ;; latter are passed in as arguments to user code
+  (func $scheduler (param $nextk (ref null $cont))
+    (loop $loop
+      (if (ref.is_null (local.get $nextk)) (then (return)))
+      (call $prompt (local.get $nextk))
+      (local.set $nextk (call $dequeue))
+      (br $loop)
+    )
+  )
+
+  ;; func.bind is needed in the implementations of fork
+  ;;
+  ;; More generally func.bind is needed for any operation that
+  ;; takes arguments.
+  ;;
+  ;; One could use another continuation here instead, but constructing
+  ;; a new continuation every time an operation is invoked seems
+  ;; unnecessarily wasteful.
+
+  ;; synchronous scheduler
+  (func $handle-yield-sync (param $k (ref $cont))
+    (call $scheduler (local.get $k))
+  )
+  (func $yield-sync
+    (suspend $control (ref.func $handle-yield))
+  )
+  (func $handle-fork-sync (param $t (ref $cont)) (param $k (ref $cont))
+    (call $enqueue (local.get $t))
+    (call $scheduler (local.get $k))
+  )
+  (func $fork-sync (param $t (ref $cont))
+    (suspend $control (func.bind (type $cont-func) (local.get $t) (ref.func $handle-fork-sync)))
+  )
+  (func $sync (export "sync") (param $k (ref $func-cont-func-cont))
+    (call $scheduler
+      (cont.bind (type $cont) (ref.func $yield) (ref.func $fork-sync) (local.get $k)))
+  )
+
+  ;; asynchronous yield (used by all asynchronous schedulers)
+  (func $handle-yield (param $k (ref $cont))
+    (call $enqueue (local.get $k))
+    (call $scheduler (call $dequeue))
+  )
+  (func $yield
+    (suspend $control (ref.func $handle-yield))
+  )
+  ;; four asynchronous implementations of fork:
+  ;;   * kt and tk don't yield on encountering a fork
+  ;;     1) kt runs the continuation, queuing up the new thread for later
+  ;;     2) tk runs the new thread first, queuing up the continuation for later
+  ;;   * ykt and ytk do yield on encountering a fork
+  ;;     3) ykt runs the continuation, queuing up the new thread for later
+  ;;     4) ytk runs the new thread first, queuing up the continuation for later
+
+  ;; no yield on fork, continuation first
+  (func $handle-fork-kt (param $t (ref $cont)) (param $k (ref $cont))
+    (call $enqueue (local.get $t))
+    (call $scheduler (local.get $k))
+  )
+  (func $fork-kt (param $t (ref $cont))
+    (suspend $control (func.bind (type $cont-func) (local.get $t) (ref.func $handle-fork-kt)))
+  )
+  (func $kt (export "kt") (param $k (ref $func-cont-func-cont))
+    (call $scheduler
+      (cont.bind (type $cont) (ref.func $yield) (ref.func $fork-kt) (local.get $k)))
+  )
+
+  ;; no yield on fork, new thread first
+  (func $handle-fork-tk (param $t (ref $cont)) (param $k (ref $cont))
+    (call $enqueue (local.get $k))
+    (call $scheduler (local.get $t))
+  )
+  (func $fork-tk (param $t (ref $cont))
+    (suspend $control (func.bind (type $cont-func) (local.get $t) (ref.func $handle-fork-tk)))
+  )
+  (func $tk (export "tk") (param $k (ref $func-cont-func-cont))
+    (call $scheduler
+      (cont.bind (type $cont) (ref.func $yield) (ref.func $fork-tk) (local.get $k)))
+  )
+
+  ;; yield on fork, continuation first
+  (func $handle-fork-ykt (param $t (ref $cont)) (param $k (ref $cont))
+    (call $enqueue (local.get $k))
+    (call $enqueue (local.get $t))
+    (call $scheduler (call $dequeue))
+  )
+  (func $fork-ykt (param $t (ref $cont))
+    (suspend $control (func.bind (type $cont-func) (local.get $t) (ref.func $handle-fork-ykt)))
+  )
+  (func $ykt (export "ykt") (param $k (ref $func-cont-func-cont))
+    (call $scheduler
+      (cont.bind (type $cont) (ref.func $yield) (ref.func $fork-ykt) (local.get $k)))
+  )
+
+  ;; yield on fork, new thread first
+  (func $handle-fork-ytk (param $t (ref $cont)) (param $k (ref $cont))
+    (call $enqueue (local.get $t))
+    (call $enqueue (local.get $k))
+    (call $scheduler (call $dequeue))
+  )
+  (func $fork-ytk (param $t (ref $cont))
+    (suspend $control (func.bind (type $cont-func) (local.get $t) (ref.func $handle-fork-ytk)))
+  )
+  (func $ytk (export "ytk") (param $k (ref $func-cont-func-cont))
+    (call $scheduler
+      (cont.bind (type $cont) (ref.func $yield) (ref.func $fork-ytk) (local.get $k)))
+  )
+)
+(register "scheduler")
+```
+
+
+```
+(module
+  (type $func (func))       ;; [] -> []
+  (type $cont (cont $func)) ;; cont ([] -> [])
+
+  (type $cont-func (func (param (ref $cont)))) ;; [cont ([] -> [])] -> []
+  (type $cont-cont (cont $cont-func))          ;; cont ([cont ([] -> [])] -> [])
+
+  (type $func-cont-func-func (func (param (ref $func)) (param (ref $cont-func)))) ;; ([] -> []) -> ([cont ([] -> [])] -> []) -> []
+  (type $func-cont-func-cont (cont $func-cont-func-func))                         ;; cont (([] -> []) -> ([cont ([] -> [])] -> []) -> [])
+
+  (func $scheduler-sync (import "scheduler" "sync") (param $nextk (ref $func-cont-func-cont)))
+  (func $scheduler-kt (import "scheduler" "kt") (param $nextk (ref $func-cont-func-cont)))
+  (func $scheduler-tk (import "scheduler" "tk") (param $nextk (ref $func-cont-func-cont)))
+  (func $scheduler-ykt (import "scheduler" "ykt") (param $nextk (ref $func-cont-func-cont)))
+  (func $scheduler-ytk (import "scheduler" "ytk") (param $nextk (ref $func-cont-func-cont)))
+
+  (func $log (import "spectest" "print_i32") (param i32))
+
+  (func $main (import "example" "main") (param $yield (ref $func)) (param $fork (ref $cont-func)))
+
+  (elem declare func $main)
+
+  (func $run (export "run")
+    (call $log (i32.const -1))
+    (call $scheduler-sync (cont.new (type $func-cont-func-cont) (ref.func $main)))
+    (call $log (i32.const -2))
+    (call $scheduler-kt (cont.new (type $func-cont-func-cont) (ref.func $main)))
+    (call $log (i32.const -3))
+    (call $scheduler-tk (cont.new (type $func-cont-func-cont) (ref.func $main)))
+    (call $log (i32.const -4))
+    (call $scheduler-ykt (cont.new (type $func-cont-func-cont) (ref.func $main)))
+    (call $log (i32.const -5))
+    (call $scheduler-ytk (cont.new (type $func-cont-func-cont) (ref.func $main)))
+    (call $log (i32.const -6))
+  )
+)
+```
+
+
+
+(TODO) ...
+
 
 ## Implementation Strategies
 
