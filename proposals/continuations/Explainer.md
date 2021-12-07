@@ -1583,6 +1583,7 @@ largely orthogonal to the typed continuations proposal and similar
 issues already arise with extensions such as exceptions.
 
 
+TODO: resuspend (aka OCaml's reperform, and analogous to exception proposal's rethrow)
 
 TODO: shallow vs deep
 
