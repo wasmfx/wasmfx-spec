@@ -241,7 +241,7 @@ abortive action" which causes the stack to be unwound.
 ```wat
   resume_throw $exn : [tp* (ref $ct)])] -> [tr*]
   where:
-  - $ct = cont ([ta*] -> [tr*])
+  - $ct = cont [ta*] -> [tr*]
   - $exn : [tp*] -> []
 ```
 
