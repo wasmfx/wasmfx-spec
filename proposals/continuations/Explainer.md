@@ -140,9 +140,10 @@ interface for structured manipulation of the execution stack via
  * **No GC dependency**: We intend every language to be able to use
    typed continuations to implement non-local flow abstractions
    irrespective of whether its memory is managed by a GC. Thus this
-   proposal must not depend on the presence of a full-blown GC as in the GC proposal, rather, reference
-   counting or a similar technique must be sufficient in cases where
-   some form of memory management is necessary.
+   proposal must not depend on the presence of a full-blown GC as in
+   the GC proposal, rather, reference counting or a similar technique
+   must be sufficient in cases where some form of memory management is
+   necessary.
 
  * **Debugging friendliness**: The addition of continuations must
    preserve compatibility with standard debugging formats such as
@@ -155,11 +156,13 @@ interface for structured manipulation of the execution stack via
    namely, exception handlers. Exceptions must continue to work in the
    presence of typed continuations and vice versa.
 
- * **Preserve Wasm invariants of legacy code**: The proposal must be
-   backwards compatibile with existing Wasm code. In particular, this
-   means that the presence of typed continuations should not break
-   invariants of existing code, e.g. code that expects to be executed
-   once should not suddenly be executed twice.
+ * **Preserve Wasm invariants of legacy code**: The proposal must
+   provide a means to protect the invariants of existing Wasm
+   code. For instance, this means that in the presence of code that
+   uses typed continuations it should be possible to ensure that other
+   legacy code cannot suspend. The mechanism for protecting invariants
+   need not be automatic (in the same vein as explicit synchronisation
+   might be needed when adding threads and shared memory).
 
 ## Instruction Set
 
@@ -1352,15 +1355,16 @@ a "hole" on stack 2, that can be filled by an invocation of
 
 ### Memory Management
 
-The current proposal does not require a general garbage
-collector as the linearity of continuations guarantees that there are
-no cycles in continuation objects. In theory, we could do without any
-automated memory management at all if we took seriously the idea that
+The current proposal does not require a general garbage collector as
+the linearity of continuations guarantees that there are no cycles in
+continuation objects. In theory, we could dispense with automated
+memory management altogether if we took seriously the idea that
 failure to use a continuation constitutes a bug in the producer. In
-practice, we expect that for many systems the only feasible way to
-ensure that continuations are always used (or at least deallocated) is
-to use some form of automated memory management, such as a reference
-counting.
+practice, for most producers enforcing such a discipline is
+unrealistic and not something an engine can rely on anyway. To prevent
+space leaks, most engines will need some form of automated memory
+meanagement for unconsumed continuations. Due to the acyclicity of
+continuations, a reference counting scheme is sufficient.
 
 ### Linear vs Constant Time Dispatch
 
