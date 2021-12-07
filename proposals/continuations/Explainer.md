@@ -181,7 +181,7 @@ As a shorthand, we will often write the function type inline and write a continu
 ### Declaring Control Tags
 
 A control tag is similar to an exception extended with a result
-type. Operationally, a control tag may be thought of as a *resumable*
+type (or list thereof). Operationally, a control tag may be thought of as a *resumable*
 exception. A tag declaration provides the type signature of a control
 tag.
 
