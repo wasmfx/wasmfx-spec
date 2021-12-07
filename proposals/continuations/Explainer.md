@@ -1352,7 +1352,7 @@ a "hole" on stack 2, that can be filled by an invocation of
 
 ### Memory Management
 
-The current proposal does not require a cycle-detecting garbage
+The current proposal does not require a general garbage
 collector as the linearity of continuations guarantees that there are
 no cycles in continuation objects. In theory, we could do without any
 automated memory management at all if we took seriously the idea that
