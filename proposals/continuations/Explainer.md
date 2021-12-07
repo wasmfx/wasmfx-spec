@@ -208,7 +208,7 @@ from a function.
   - $ct = cont $ft
 ```
 
-The instruction expects the top of the stack to contain a reference to
+The instruction takes as operand a reference to
 a function of type `[t1*] -> [t2*]`. The body of this function is a
 computation that may perform non-local control flow.
 
