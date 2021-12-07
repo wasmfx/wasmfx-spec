@@ -224,7 +224,7 @@ continuation.
 ```wat
   resume (tag $e $l)* : [tp* (ref $ct)] -> [tr*]
   where:
-  - $ct = cont ([tp*] -> [tr*])
+  - $ct = cont [tp*] -> [tr*]
 ```
 
 The `resume` instruction is parameterised by a handler defined by a
