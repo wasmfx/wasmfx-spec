@@ -82,7 +82,7 @@ may perform.
 
 A *continuation* is a first-class program object that represents the
 remainder of computation from a certain point in the execution of a
-program. The typed continuations proposal is based on a structured
+program -- intuitively, its current stack. The typed continuations proposal is based on a structured
 notion of delimited continuations. A *delimited continuation* is a
 continuation whose extent is delimited by some *control delimiter*,
 meaning it represents the remainder of computation from a certain
