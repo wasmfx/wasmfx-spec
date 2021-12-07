@@ -1438,7 +1438,7 @@ instruction for switching directly to another continuation:
 This behaves as if there was a built-in tag
 
 ```wat
-  (tag Switch (param t1* (ref $ct1)) (result t3*))
+  (tag $Switch (param t1* (ref $ct1)) (result t3*))
 ```
 
 with which the computation suspends to the handler, and the handler
