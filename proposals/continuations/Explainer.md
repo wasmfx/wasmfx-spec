@@ -166,7 +166,7 @@ interface for structured manipulation of the execution stack via
 The proposal adds a new reference type for continuations.
 
 ```wat
-  (cont ([tp*] -> [tr*]))
+  (cont $t)
 ```
 
 A continuation type is indexed by a function type, where `tp1*`
