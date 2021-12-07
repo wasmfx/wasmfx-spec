@@ -277,7 +277,7 @@ suspension point expects to be resumed later with arguments of types
 
 ### Binding Continuations
 
-The domain of a continuation may be shrunk via `cont.bind`. This
+The parameter list of a continuation may be shrunk via `cont.bind`. This
 instruction provides a way to partially apply a given
 continuation. This facility turns out to be important in practice due
 to the block and type structure of Wasm as in order to return a
