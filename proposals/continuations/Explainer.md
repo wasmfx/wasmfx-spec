@@ -111,7 +111,7 @@ concerns is that the construction of continuations is distinct from
 *handling* of continuations. A continuation is handled at the
 delimiter of a control tag rather than at the invocation site of the
 control tag. Control tags are a mild extension of exception tags as in
-the exception-handling proposal. The key difference is that in
+the exception handling proposal. The key difference is that in
 addition to a payload type, a control tag also declares a return type.
 
 Typed continuations may be efficiently implemented using segmented
