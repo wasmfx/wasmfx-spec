@@ -140,7 +140,7 @@ interface for structured manipulation of the execution stack via
  * **No GC dependency**: We intend every language to be able to use
    typed continuations to implement non-local flow abstractions
    irrespective of whether its memory is managed by a GC. Thus this
-   proposal must not depend on a full-blown GC, rather, reference
+   proposal must not depend on the presence of a full-blown GC as in the GC proposal, rather, reference
    counting or a similar technique must be sufficient in cases where
    some form of memory management is necessary.
 
