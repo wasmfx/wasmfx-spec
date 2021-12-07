@@ -112,7 +112,7 @@ concerns is that the construction of continuations is distinct from
 delimiter of a control tag rather than at the invocation site of the
 control tag. Control tags are a mild extension of exception tags as in
 the exception handling proposal. The key difference is that in
-addition to a payload type, a control tag also declares a return type.
+addition to a payload type, a control tag also declares a return type. Roughly, control tags can be thought of as resumable exceptions.
 
 Typed continuations may be efficiently implemented using segmented
 stacks, but other implementations are also possible.
