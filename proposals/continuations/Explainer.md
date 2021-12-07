@@ -189,7 +189,7 @@ tag.
   (tag $e (param tp*) (result tr*))
 ```
 
-The `$e` is the name of the control tag. The parameter types `tp*`
+The `$e` is the symbolic index of the control tag in the index space of tags. The parameter types `tp*`
 describe the expected stack layout prior to invoking the tag, and the
 result types `tr*` describe the stack layout following an invocation
 of the operation. In this document we will sometimes write `$e : [tp*]
