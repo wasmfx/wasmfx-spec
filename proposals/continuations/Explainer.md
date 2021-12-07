@@ -305,7 +305,7 @@ supplied to either `resume`,`resume_throw`, or `cont.bind`.
 
 In order to allow ensuring that control cannot be captured across certain abstraction or language
 boundaries, we provide an instruction for explicitly trapping attempts
-at reifying stacks across language boundaries.
+at reifying stacks across a certain point.
 
 ```wat
   barrier $l bt instr* end : [t1*] -> [t2*]
@@ -360,7 +360,7 @@ thread to signal that it is willing to yield.
 
 ```wasm
 (module $lwt
-  (event $yield (export "yield"))
+  (tag $yield (export "yield"))
 )
 (register "lwt")
 ```
@@ -515,8 +515,8 @@ expressive by allowing new threads to be forked dynamically.
   (type $func (func))
   (type $cont (cont $func))
 
-  (event $yield (export "yield"))
-  (event $fork (export "fork") (param (ref $cont)))
+  (tag $yield (export "yield"))
+  (tag $fork (export "fork") (param (ref $cont)))
 )
 (register "lwt")
 ```
