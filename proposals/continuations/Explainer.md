@@ -3,7 +3,7 @@
 This document provides an informal presentation of the *typed
 continuations* proposal, a minimal and compatible extension to Wasm
 for structured non-local control flow. The proposal is minimal in the
-sense that it leverages the existing instruction set and type
+sense that it leverages Wasm's existing instruction set and type
 system. It extends the instruction set with instructions to suspend,
 resume, and abort computations, and extends the type system with a
 single new reference type for *continuations*.
