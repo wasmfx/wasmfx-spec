@@ -104,8 +104,9 @@ current execution context and reifies it as a *continuation object*
 type of a control tag communicates the type of its payload as well as
 its expected return type, i.e. the type of data that must be supplied
 to its associated continuation upon resumption. In other words,
-control tags define an *interface* for constructing continuations. A
-second aspect of the design that aids modularity by separating
+control tags define an *interface* for constructing continuations.
+
+A second aspect of the design that aids modularity by separating
 concerns is that the construction of continuations is distinct from
 *handling* of continuations. A continuation is handled at the
 delimiter of a control tag rather than at the invocation site of the
