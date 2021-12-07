@@ -244,7 +244,7 @@ and module_' =
   globals : global list;
   tables : table list;
   memories : memory list;
-  tags  : tag list;
+  tags : tag list;
   funcs : func list;
   start : idx option;
   elems : elem_segment list;
