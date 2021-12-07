@@ -1219,7 +1219,7 @@ forking as `$yield` and `$fork` functions.
 
 ### Segmented Stacks
 
-Segmented stacks is a state-of-the-art implementation technique for
+Segmented stacks is an implementation technique for
 continuations (cite: Dybvig et al., Chez Scheme, Multicore OCaml). The
 principal idea underpinning segmented stacks is to view each
 continuation as representing a separate stack.
