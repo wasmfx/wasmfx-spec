@@ -86,7 +86,7 @@ program -- intuitively, its current stack. The typed continuations proposal is b
 notion of delimited continuations. A *delimited continuation* is a
 continuation whose extent is delimited by some *control delimiter*,
 meaning it represents the remainder of computation from a certain
-point up to (and possibly including) its control delimiter. An
+point up to (and possibly including) its control delimiter -- intuitively, a segment of the stack. An
 alternative to delimited continuations is undelimited continuations
 which represent the remainder of the *entire* program. Delimited
 continuations are preferable as they are more modular and more
