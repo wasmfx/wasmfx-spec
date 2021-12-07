@@ -303,19 +303,19 @@ supplied to either `resume`,`resume_throw`, or `cont.bind`.
 
 ### Trapping Continuations
 
-In order to ensure that control cannot be captured across language
+In order to allow ensuring that control cannot be captured across certain abstraction or language
 boundaries, we provide an instruction for explicitly trapping attempts
 at reifying stacks across language boundaries.
 
 ```wat
-  barrier $label $bt instr* : [s*] -> [t*]
+  barrier $l bt instr* end : [t1*] -> [t2*]
   where:
-  - $bt = [s*] -> [t*]
-  - instr* : [s*] -> [t*]
+  - bt = [t1*] -> [t2*]
+  - instr* : [t1*] -> [t2*]
 ```
 
-The `barrier` instruction is a block with label `$label`, block type
-`$bt = [t1*] -> [t2*]`, whose body is the instruction sequence given
+The `barrier` instruction is a block with label `$l`, block type
+`bt = [t1*] -> [t2*]`, whose body is the instruction sequence given
 by `instr*`. Operationally, `barrier` may be viewed as a "catch-all"
 handler, that handles any control tag by invoking a trap.
 
@@ -370,7 +370,7 @@ declared it, we can now write some cooperative threads as functions.
 
 ```wasm
 (module $example
-  (event $yield (import "lwt" "yield"))
+  (tag $yield (import "lwt" "yield"))
   (func $log (import "spectest" "print_i32") (param i32))
 
   (func $thread1 (export "thread1")
@@ -415,7 +415,7 @@ We now define a scheduler.
   (type $func (func))
   (type $cont (cont $func))
 
-  (event $yield (import "lwt" "yield"))
+  (tag $yield (import "lwt" "yield"))
 
   ;; queue interface
   (func $queue-empty (import "queue" "queue-empty") (result i32))
@@ -426,7 +426,7 @@ We now define a scheduler.
     (loop $l
       (if (call $queue-empty) (then (return)))
       (block $on_yield (result (ref $cont))
-        (resume (event $yield $on_yield)
+        (resume (tag $yield $on_yield)
                 (call $dequeue)
         )
         (br $l)  ;; thread terminated
@@ -443,7 +443,7 @@ We assume a suitable interface to a queue of active threads
 represented as continuations. The scheduler is a loop which repeatedly
 runs the continuation (thread) at the head of the queue. It does so by
 resuming the continuation with a handler for the `$yield` tag. The
-handler `(event $yield $on_yield)` specifies that the `$yield` tag
+handler `(tag $yield $on_yield)` specifies that the `$yield` tag
 is handled by running the code immediately following the block
 labelled with `$on_yield`, the `$on_yield` clause. The result of the
 block `(result (ref $cont))` declares that there will be a
@@ -530,8 +530,8 @@ example to fork each of the three threads from a single main thread.
   (type $func (func))
   (type $cont (cont $func))
 
-  (event $yield (import "lwt" "yield"))
-  (event $fork (import "lwt" "fork") (param (ref $cont)))
+  (tag $yield (import "lwt" "yield"))
+  (tag $fork (import "lwt" "fork") (param (ref $cont)))
 
   (func $log (import "spectest" "print_i32") (param i32))
 
@@ -580,8 +580,8 @@ As with the static example we define a scheduler module.
   (type $func (func))
   (type $cont (cont $func))
 
-  (event $yield (import "lwt" "yield"))
-  (event $fork (import "lwt" "fork") (param (ref $cont)))
+  (tag $yield (import "lwt" "yield"))
+  (tag $fork (import "lwt" "fork") (param (ref $cont)))
 
   (func $queue-empty (import "queue" "queue-empty") (result i32))
   (func $dequeue (import "queue" "dequeue") (result (ref null $cont)))
@@ -601,8 +601,8 @@ thread to completion without actually yielding.
       (if (ref.is_null (local.get $nextk)) (then (return)))
       (block $on_yield (result (ref $cont))
         (block $on_fork (result (ref $cont) (ref $cont))
-          (resume (event $yield $on_yield)
-                  (event $fork $on_fork)
+          (resume (tag $yield $on_yield)
+                  (tag $fork $on_fork)
                   (local.get $nextk)
           )
           (local.set $nextk (call $dequeue))
@@ -676,8 +676,8 @@ schedulers.
       (if (ref.is_null (local.get $nextk)) (then (return)))
       (block $on_yield (result (ref $cont))
         (block $on_fork (result (ref $cont) (ref $cont))
-          (resume (event $yield $on_yield)
-                  (event $fork $on_fork)
+          (resume (tag $yield $on_yield)
+                  (tag $fork $on_fork)
                   (local.get $nextk)
           )
           (local.set $nextk (call $dequeue))
@@ -700,8 +700,8 @@ schedulers.
       (if (ref.is_null (local.get $nextk)) (then (return)))
       (block $on_yield (result (ref $cont))
         (block $on_fork (result (ref $cont) (ref $cont))
-          (resume (event $yield $on_yield)
-                  (event $fork $on_fork)
+          (resume (tag $yield $on_yield)
+                  (tag $fork $on_fork)
                   (local.get $nextk)
           )
           (local.set $nextk (call $dequeue))
@@ -724,8 +724,8 @@ schedulers.
       (if (ref.is_null (local.get $nextk)) (then (return)))
       (block $on_yield (result (ref $cont))
         (block $on_fork (result (ref $cont) (ref $cont))
-          (resume (event $yield $on_yield)
-                  (event $fork $on_fork)
+          (resume (tag $yield $on_yield)
+                  (tag $fork $on_fork)
                   (local.get $nextk)
           )
           (local.set $nextk (call $dequeue))
@@ -749,8 +749,8 @@ schedulers.
       (if (ref.is_null (local.get $nextk)) (then (return)))
       (block $on_yield (result (ref $cont))
         (block $on_fork (result (ref $cont) (ref $cont))
-          (resume (event $yield $on_yield)
-                  (event $fork $on_fork)
+          (resume (tag $yield $on_yield)
+                  (tag $fork $on_fork)
                   (local.get $nextk)
           )
           (local.set $nextk (call $dequeue))
