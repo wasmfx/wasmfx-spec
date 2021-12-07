@@ -1467,7 +1467,7 @@ handler lookup:
 ```
 
 It seems undesirable that every handler implicitly handles the
-built-in `Switch` tag, so this should be opt-in by a mode flag on the
+built-in `$Switch` tag, so this should be opt-in by a mode flag on the
 resume instruction(s).
 
 ### Control/Prompt as an Alternative Basis
