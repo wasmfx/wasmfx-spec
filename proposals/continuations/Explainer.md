@@ -204,7 +204,7 @@ from a function.
 ```wat
   cont.new $ct : [(ref $ft)] -> [(ref $ct)]
   where:
-  - $ft = [t1*] -> [t2*]
+  - $ft = func [t1*] -> [t2*]
   - $ct = cont $ft
 ```
 
