@@ -169,10 +169,14 @@ The proposal adds a new reference type for continuations.
   (cont $t)
 ```
 
-A continuation type is indexed by a function type, where `tp1*`
+A continuation type is given in terms of a function type `$t`, whose parameters `tp*`
 describes the expected stack shape prior to resuming/starting the
-continuation (the parameter types), and `tr*` describes the stack
-shape after the continuation has run to completion (the return types).
+continuation, and whose return types `tr*` describes the stack
+shape after the continuation has run to completion.
+
+As a shorthand, we will often write the function type inline and write a continuation type as
+```wat
+  (cont [tp*] -> [tr*])
 
 ### Declaring Control Tags
 
