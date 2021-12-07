@@ -291,8 +291,8 @@ provides several example usages of `cont.bind`).
 ```wat
   cont.bind $ct2 : [tp1* (ref $ct1)] -> [(ref $ct2)]
   where:
-  $ct1 = cont ([tp1 tp2*] -> [tr*])
-  $ct2 = cont ([tp2*] -> [tr*])
+  $ct1 = cont [tp1* tp2*] -> [tr*]
+  $ct2 = cont [tp2*] -> [tr*]
 ```
 
 The instruction `cont.bind` binds the arguments of type `tp1*` to a
