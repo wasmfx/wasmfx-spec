@@ -73,7 +73,7 @@ to type delimited continuations, we use the idea of multiple *named*
 control tags from Plotkin and Pretnar's effect handlers. Each control
 tag is declared module-wide along its payload type and return
 type. This declaration can be used to readily type points of non-local
-transfer of control. From a operational perspective we may view
+transfer of control. From an operational perspective we may view
 control tags as a means for writing an interface for the possible
 kinds of non-local transfers (or stack switches) that a computation
 may perform.
@@ -112,7 +112,8 @@ concerns is that the construction of continuations is distinct from
 delimiter of a control tag rather than at the invocation site of the
 control tag. Control tags are a mild extension of exception tags as in
 the exception handling proposal. The key difference is that in
-addition to a payload type, a control tag also declares a return type. Roughly, control tags can be thought of as resumable exceptions.
+addition to a payload type, a control tag also declares a return
+type. Roughly, control tags can be thought of as resumable exceptions.
 
 Typed continuations may be efficiently implemented using segmented
 stacks, but other implementations are also possible.
@@ -180,6 +181,7 @@ shape after the continuation has run to completion.
 As a shorthand, we will often write the function type inline and write a continuation type as
 ```wat
   (cont [tp*] -> [tr*])
+```
 
 ### Declaring Control Tags
 
@@ -192,12 +194,12 @@ tag.
   (tag $e (param tp*) (result tr*))
 ```
 
-The `$e` is the symbolic index of the control tag in the index space of tags. The parameter types `tp*`
-describe the expected stack layout prior to invoking the tag, and the
-result types `tr*` describe the stack layout following an invocation
-of the operation. In this document we will sometimes write `$e : [tp*]
--> [tr*]` as shorthand for indicating that such a declaration is in
-scope.
+The `$e` is the symbolic index of the control tag in the index space
+of tags. The parameter types `tp*` describe the expected stack layout
+prior to invoking the tag, and the result types `tr*` describe the
+stack layout following an invocation of the operation. In this
+document we will sometimes write `$e : [tp*] -> [tr*]` as shorthand
+for indicating that such a declaration is in scope.
 
 ### Creating Continuations
 
@@ -306,9 +308,10 @@ supplied to either `resume`,`resume_throw`, or `cont.bind`.
 
 ### Trapping Continuations
 
-In order to allow ensuring that control cannot be captured across certain abstraction or language
-boundaries, we provide an instruction for explicitly trapping attempts
-at reifying stacks across a certain point.
+In order to allow ensuring that control cannot be captured across
+certain abstraction or language boundaries, we provide an instruction
+for explicitly trapping attempts at reifying stacks across a certain
+point.
 
 ```wat
   barrier $l bt instr* end : [t1*] -> [t2*]
@@ -1586,12 +1589,35 @@ Questions of Wasm interoperability and support for legacy code are
 largely orthogonal to the typed continuations proposal and similar
 issues already arise with extensions such as exceptions.
 
+### First-class tags
+
+In the current proposal tags are statically defined in a module
+header. This should suffice for supporting the critical
+use-cases. However, for some purposes, such as implementing richer
+forms of control operators such as effect handlers, it might be useful
+to add support for dynamically generated tags. These could be used,
+for instance, for more efficiently compiling effect handlers that take
+advantage of features such as Multicore OCaml's functors, where the
+type of an effect (tag) may not be fully known at compile time.
+
+### Shallow versus deep handlers
+
+The effect handlers feature which underlies the design of the typed
+continuations proposal classically comes in too forms: shallow and
+deep handlers. With shallow handlers, the installation of handlers is
+completely decoupled from resuming a continuation. With deep handlers,
+the handler that produced the continuation is automatically
+reinstalled when a continuation is resumed. The typed continuations
+proposal adopts a hybrid of shallow and deep handlers, which we call
+*sheep handlers*. Like a shallow handler, there is no automatic
+reinstallation of an existing handler. But like deep handlers a new
+handler is installed when a continuation is resumed: the new handler
+is written explicitly as part of the `resume` instruction.
+
 
 TODO: resuspend (aka OCaml's reperform, and analogous to exception proposal's rethrow)
 
-TODO: shallow vs deep
-
-TODO: first-class tags
+TODO: return clauses
 
 TODO: preemption / asynchrony / interrupts
 
@@ -1605,3 +1631,4 @@ TODO: compare to asyncify?
 
 TODO: compare to Wasm/k?
 
+TOOD: compare to the Koka Wasm backend?
