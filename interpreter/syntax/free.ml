@@ -116,7 +116,7 @@ let rec instr (e : instr) =
     {free with locals = Lib.Fun.repeat (List.length ts) shift free.locals}
   | Try (bt, es1, xo, es2) ->
     block_type bt ++ block es1 ++ opt (fun x -> events (idx x)) xo ++ block es2
-  | Throw x | ResumeThrow x | Suspend x -> events (idx x)
+  | Throw x | Suspend x -> events (idx x)
   | Br x | BrIf x | BrOnNull x -> labels (idx x)
   | BrTable (xs, x) -> list (fun x -> labels (idx x)) (x::xs)
   | Return | CallRef | ReturnCallRef -> empty
@@ -125,6 +125,8 @@ let rec instr (e : instr) =
     tables (idx x) ++ types (idx y)
   | FuncBind x | ContNew x | ContBind x -> types (idx x)
   | Resume xys -> list (fun (x, y) -> events (idx x) ++ labels (idx y)) xys
+  | ResumeThrow (x, xys) ->
+    events (idx x) ++ list (fun (x, y) -> events (idx x) ++ labels (idx y)) xys
   | LocalGet x | LocalSet x | LocalTee x -> locals (idx x)
   | GlobalGet x | GlobalSet x -> globals (idx x)
   | TableGet x | TableSet x | TableSize x | TableGrow x | TableFill x ->

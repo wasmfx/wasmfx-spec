@@ -352,19 +352,19 @@ let rec step (c : config) : config =
         cont := None;
         vs', [Handle (Some hs, ctxt (args, [])) @@ e.at]
 
-      | ResumeThrow x, Ref (NullRef _) :: vs ->
+      | ResumeThrow (x, xls), Ref (NullRef _) :: vs ->
         vs, [Trapping "null continuation reference" @@ e.at]
 
-      | ResumeThrow x, Ref (ContRef {contents = None}) :: vs ->
+      | ResumeThrow (x, xls), Ref (ContRef {contents = None}) :: vs ->
         vs, [Trapping "continuation already consumed" @@ e.at]
 
-      | ResumeThrow x, Ref (ContRef ({contents = Some (n, ctxt)} as cont)) :: vs ->
+      | ResumeThrow (x, xls), Ref (ContRef ({contents = Some (n, ctxt)} as cont)) :: vs ->
         let evt = event c.frame.inst x in
         let EventType (FuncType (ts, _), _) = Event.type_of evt in
+        let hs = List.map (fun (x, l) -> event c.frame.inst x, l) xls in
         let args, vs' = split (List.length ts) vs e.at in
-        let vs1', es1' = ctxt (args, [Plain (Throw x) @@ e.at]) in
         cont := None;
-        vs1' @ vs', es1'
+        vs', [Handle (Some hs, ctxt (args, [Plain (Throw x) @@ e.at])) @@ e.at]
 
       | Barrier (bt, es'), vs ->
         let FuncType (ts1, _) = block_type c.frame.inst bt e.at in

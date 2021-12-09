@@ -512,23 +512,10 @@ let rec check_instr (c : context) (e : instr) (s : infer_result_type) : op_type 
     | nul, DefHeapType (SynVar y) ->
       let ContType z = cont_type c (y @@ e.at) in
       let FuncType (ts1, ts2) = func_type c (as_syn_var z @@ e.at) in
-      List.iter (fun (x1, x2) ->
-        let EventType (FuncType (ts3, ts4), res) = event c x1 in
-        require (res = Resumable) x1.at "handling a non-resumable event";
-        match Lib.List.last_opt (label c x2) with
-        | Some (RefType (nul', DefHeapType (SynVar y'))) ->
-          let ContType z' = cont_type c (y' @@ x2.at) in
-          let ft' = func_type c (as_syn_var z' @@ x2.at) in
-          require (match_func_type c.types [] (FuncType (ts4, ts2)) ft') x2.at
-            "type mismatch in continuation type";
-          check_stack c (ts3 @ [RefType (nul', DefHeapType (SynVar y'))]) (label c x2) x2.at
-        | _ ->
-         error e.at
-           ("type mismatch: instruction requires continuation reference type" ^
-            " but label has " ^ string_of_result_type (label c x2))
-      ) xys;
+      check_handler c xys (Some ts2);
       (ts1 @ [RefType (nul, DefHeapType (SynVar y))]) --> ts2
     | _, BotHeapType ->
+      check_handler c xys None;
       [] -->... []
     | rt ->
       error e.at
@@ -536,15 +523,17 @@ let rec check_instr (c : context) (e : instr) (s : infer_result_type) : op_type 
          " but stack has " ^ string_of_value_type (RefType rt))
     )
 
-  | ResumeThrow x ->
+  | ResumeThrow (x, xys) ->
     let EventType (FuncType (ts0, _), res) = event c x in
     require (res = Terminal) e.at "throwing a non-exception event";
     (match peek_ref 0 s e.at with
     | nul, DefHeapType (SynVar y) ->
       let ContType z = cont_type c (y @@ e.at) in
       let FuncType (ts1, ts2) = func_type c (as_syn_var z @@ e.at) in
+      check_handler c xys (Some ts2);
       (ts0 @ [RefType (nul, DefHeapType (SynVar y))]) --> ts2
     | _, BotHeapType ->
+      check_handler c xys None;
       [] -->... []
     | rt ->
       error e.at
@@ -709,6 +698,27 @@ and check_block (c : context) (es : instr list) (ft : func_type) at =
   require (snd s' = []) at
     ("type mismatch: block requires " ^ string_of_result_type ts2 ^
      " but stack has " ^ string_of_result_type (snd s))
+
+and check_handler (c : context) (xys : (idx * idx) list) (tso : result_type option) =
+  List.iter (fun (x1, x2) ->
+    let EventType (FuncType (ts1, ts2), res) = event c x1 in
+    require (res = Resumable) x1.at "handling a non-resumable event";
+    match Lib.List.last_opt (label c x2) with
+    | Some (RefType (nul', DefHeapType (SynVar y'))) ->
+      let ContType z' = cont_type c (y' @@ x2.at) in
+      let ft' = func_type c (as_syn_var z' @@ x2.at) in
+      (match tso with
+      | None -> ()
+      | Some ts ->
+        require (match_func_type c.types [] (FuncType (ts2, ts)) ft') x2.at
+          "type mismatch in continuation type"
+      );
+      check_stack c (ts1 @ [RefType (nul', DefHeapType (SynVar y'))]) (label c x2) x2.at
+    | _ ->
+      error x2.at
+        ("type mismatch: instruction requires continuation reference type" ^
+         " but label has " ^ string_of_result_type (label c x2))
+  ) xys
 
 
 (* Functions & Constants *)
