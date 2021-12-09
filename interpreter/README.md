@@ -195,8 +195,9 @@ ref_type:
   externref                   ;; = (ref null extern)
 
 val_type: num_type | ref_type
-block_type : ( result <val_type>* )*
-func_type:   ( type <var> )? <param>* <result>*
+block_type: ( result <val_type>* )*
+func_type:  ( type <var> )? <param>* <result>*
+tag_type:   <param>* <result>*
 global_type: <val_type> | ( mut <val_type> )
 table_type:  <nat> <nat>? <ref_type>
 memory_type: <nat> <nat>?
@@ -209,6 +210,9 @@ expr:
   ( if <name>? <block_type> ( then <instr>* ) ( else <instr>* )? )
   ( if <name>? <block_type> <expr>+ ( then <instr>* ) ( else <instr>* )? ) ;; = <expr>+ (if <name>? <block_type> (then <instr>*) (else <instr>*)?)
   ( let <name>? <block_type> <local>* <instr>* )
+  ( try <name>? <block_type> ( do <instr*> ) ( catch ( exception <var> ) <instr>* ) )
+  ( try <name>? <block_type> ( do <instr*> ) ( catch_all <instr>* )? )
+  ( barrier <name>? <block_type> <instr>* )
 
 instr:
   <expr>
@@ -218,6 +222,9 @@ instr:
   if <name>? <block_type> <instr>* end <name>?                       ;; = (if <name>? <block_type> (then <instr>*))
   if <name>? <block_type> <instr>* else <name>? <instr>* end <name>? ;; = (if <name>? <block_type> (then <instr>*) (else <instr>*))
   let <name>? <block_type> <local>* <instr>* end <name>?             ;; = (let <name>? <block_type> <local>* <instr>*)
+  try <name>? <block_type> <instr>* catch (exception <var>) <instr>* end <name>?  ;; = (try <name>? <block_type> <instr>* (catch <var> <instr>*))
+  try <name>? <block_type> <instr>* catch_all <instr>* end <name>?   ;; = (try <name>? <block_type> <instr>* (catch_all <instr>*))
+  barrier <name>? <block_type> <instr>* end <name>?                  ;; = (barrier <name>? <block_type> <instr>*)
 
 op:
   unreachable
@@ -236,6 +243,12 @@ op:
   call_ref
   return_call_ref
   func.bind <func_type>
+  throw <var>
+  suspend <var>
+  resume ( event <var> <var> )*
+  resume_throw <var> ( event <var> <var> )*
+  cont.new <var>
+  cont.bind <var>
   local.get <var>
   local.set <var>
   local.tee <var>
@@ -275,6 +288,9 @@ param:   ( param <val_type>* ) | ( param <name> <val_type> )
 result:  ( result <val_type>* )
 local:   ( local <val_type>* ) | ( local <name> <val_type> )
 
+tag:     ( tag <name>? <tag_type> )
+         ( tag <name>? ( export <string> ) <...> )                          ;; = (export <string> (tag <N>)) (tag <name>? <...>)
+         ( tag <name>? ( import <string> <string> ) <tag_type> )            ;; = (import <string> <string> (tag <name>? <tag_type>))
 global:  ( global <name>? <global_type> <instr>* )
          ( global <name>? ( export <string> ) <...> )                       ;; = (export <string> (global <N>)) (global <name>? <...>)
          ( global <name>? ( import <string> <string> ) <global_type> )      ;; = (import <string> <string> (global <name>? <global_type>))
@@ -305,18 +321,20 @@ typedef: ( type <name>? ( func <param>* <result>* ) )
 
 import:  ( import <string> <string> <imkind> )
 imkind:  ( func <name>? <func_type> )
+         ( tag <name>? <tag_type> )
          ( global <name>? <global_type> )
          ( table <name>? <table_type> )
          ( memory <name>? <memory_type> )
 export:  ( export <string> <exkind> )
 exkind:  ( func <var> )
+         ( tag <var> )
          ( global <var> )
          ( table <var> )
          ( memory <var> )
 
-module:  ( module <name>? <typedef>* <func>* <import>* <export>* <table>* <memory>? <global>* <elem>* <data>* <start>? )
-         <typedef>* <func>* <import>* <export>* <table>* <memory>? <global>* <elem>* <data>* <start>?  ;; =
-         ( module <typedef>* <func>* <import>* <export>* <table>* <memory>? <global>* <elem>* <data>* <start>? )
+module:  ( module <name>? <typedef>* <func>* <import>* <export>* <table>* <memory>? <tag>* <global>* <elem>* <data>* <start>? )
+         <typedef>* <func>* <import>* <export>* <table>* <memory>? <tag>* <global>* <elem>* <data>* <start>?  ;; =
+         ( module <typedef>* <func>* <import>* <export>* <table>* <memory>? <tag>* <global>* <elem>* <data>* <start>? )
 ```
 
 Here, productions marked with respective comments are abbreviation forms for equivalent expansions (see the explanation of the AST below).
