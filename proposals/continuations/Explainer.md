@@ -82,11 +82,12 @@ may perform.
 
 A *continuation* is a first-class program object that represents the
 remainder of computation from a certain point in the execution of a
-program -- intuitively, its current stack. The typed continuations proposal is based on a structured
-notion of delimited continuations. A *delimited continuation* is a
-continuation whose extent is delimited by some *control delimiter*,
-meaning it represents the remainder of computation from a certain
-point up to (and possibly including) its control delimiter -- intuitively, a segment of the stack. An
+program --- intuitively, its current stack. The typed continuations
+proposal is based on a structured notion of delimited continuations. A
+*delimited continuation* is a continuation whose extent is delimited
+by some *control delimiter*, meaning it represents the remainder of
+computation from a certain point up to (and possibly including) its
+control delimiter -- intuitively, a segment of the stack. An
 alternative to delimited continuations is undelimited continuations
 which represent the remainder of the *entire* program. Delimited
 continuations are preferable as they are more modular and more
@@ -185,10 +186,10 @@ As a shorthand, we will often write the function type inline and write a continu
 
 ### Declaring Control Tags
 
-A control tag is similar to an exception extended with a result
-type (or list thereof). Operationally, a control tag may be thought of as a *resumable*
-exception. A tag declaration provides the type signature of a control
-tag.
+A control tag is similar to an exception extended with a result type
+(or list thereof). Operationally, a control tag may be thought of as a
+*resumable* exception. A tag declaration provides the type signature
+of a control tag.
 
 ```wat
   (tag $e (param tp*) (result tr*))
@@ -914,8 +915,10 @@ First we implement control/prompt.
   (type $func (func))       ;; [] -> []
   (type $cont (cont $func)) ;; cont ([] -> [])
 
-  (type $cont-func (func (param (ref $cont)))) ;; [cont ([] -> [])] -> []
-  (type $cont-cont (cont $cont-func))          ;; cont ([cont ([] -> [])] -> [])
+  ;; we sometimes write contref as shorthand for a reference to a continuation
+
+  (type $cont-func (func (param (ref $cont)))) ;; [contref ([] -> [])] -> []
+  (type $cont-cont (cont $cont-func))          ;; cont ([contref ([] -> [])] -> [])
 
   ;; Implementation of a generic delimited control operator using
   ;; effect handlers.
@@ -949,20 +952,21 @@ First we implement control/prompt.
 ```
 
 The `$control` tag amounts to a universal control tag, which takes a
-second order function `$h` as an argument. The implementation of
-prompt is the universal handler for `$control`, which simply applies
-the second order function `$h` to the captured continuation.
+second-order function `$h` as an argument (it's second-order in that
+it's a function that itself takes a function, wrapped in a
+continuation, as an argument). The implementation of prompt is the
+universal handler for `$control`, which simply applies the second
+order function `$h` to the captured continuation.
 
 In the above code we have specialised `$control` and `$prompt` to the
-case where the continuation has no parameters and no resuls, as this
+case where the continuation has no parameters and no results, as this
 suffices for implementing lightweight threads. A continuation
 parameter corresponds to the result of a control tag, so in the
 absence of parametric polymorphism, in order to simulate standard
 control tags in general we would need one copy of `$control` for each
 type of result we wanted to support.
 
-
-The following example is just like the one we implemented for
+The following example is just like the one we implemented for dynamic
 lightweight threads using `$yield` and `$fork` tags decoupled from
 handlers for defining different schedulers. Here instead we
 parameterise the whole example by the behaviour of yielding and
@@ -976,8 +980,8 @@ forking as `$yield` and `$fork` functions.
   (type $cont-func (func (param (ref $cont)))) ;; [cont ([] -> [])] -> []
   (type $cont-cont (cont $cont-func))          ;; cont ([cont ([] -> [])] -> [])
 
-  (type $func-cont-func-func (func (param (ref $func)) (param (ref $cont-func)))) ;; ([] -> []) -> ([cont ([] -> [])] -> []) -> []
-  (type $func-cont-func-cont (cont $func-cont-func-func))                         ;; cont (([] -> []) -> ([cont ([] -> [])] -> []) -> [])
+  (type $func-cont-func-func (func (param (ref $func)) (param (ref $cont-func)))) ;; ([] -> []) -> ([contref ([] -> [])] -> []) -> []
+  (type $func-cont-func-cont (cont $func-cont-func-func))                         ;; cont (([] -> []) -> ([contref ([] -> [])] -> []) -> [])
 
   (func $log (import "spectest" "print_i32") (param i32))
 
@@ -1029,7 +1033,14 @@ forking as `$yield` and `$fork` functions.
 (register "example")
 ```
 
+The function type `$func-cont-func-fun` is the type of a function that
+takes an implementation of a `$yield` function and the implementation
+as a `$fork` function as pararameters; the continuation type
+`$func-cont-func-cont` is the same thing as a continuation.
 
+We now define a scheduler module analogous to that of the previous
+dynamic lightweight thread example. As before, we will implement five
+different schedulers.
 
 ```wasm
 (module
@@ -1042,13 +1053,6 @@ forking as `$yield` and `$fork` functions.
   (type $func-cont-func-func (func (param (ref $func)) (param (ref $cont-func)))) ;; ([] -> []) -> ([cont ([] -> [])] -> []) -> []
   (type $func-cont-func-cont (cont $func-cont-func-func))                         ;; cont (([] -> []) -> ([cont ([] -> [])] -> []) -> [])
 
-  (func $log (import "spectest" "print_i32") (param i32))
-
-  ;; queue interface
-  (func $queue-empty (import "queue" "queue-empty") (result i32))
-  (func $dequeue (import "queue" "dequeue") (result (ref null $cont)))
-  (func $enqueue (import "queue" "enqueue") (param $k (ref $cont)))
-
   (elem declare func
      $handle-yield-sync $handle-yield
      $handle-fork-sync $handle-fork-kt $handle-fork-tk $handle-fork-ykt $handle-fork-ytk
@@ -1059,11 +1063,20 @@ forking as `$yield` and `$fork` functions.
   (tag $control (import "control" "control") (param (ref $cont-func)))     ;; control : ([cont ([] -> [])] -> []) -> []
   (func $prompt (import "control" "prompt") (param $nextk (ref null $cont))) ;; prompt : cont ([] -> []) -> []
 
+  ;; queue interface
+  (func $queue-empty (import "queue" "queue-empty") (result i32))
+  (func $dequeue (import "queue" "dequeue") (result (ref null $cont)))
+  (func $enqueue (import "queue" "enqueue") (param $k (ref $cont)))
+  ...
+(register "scheduler")
+```
+
+Unlike before, with control/prompt a generic scheduler loop must be
+decoupled from the implementations of each operation (yield / fork) as
+the latter are passed in as arguments to user code
+
+```wasm
   ;; generic boilerplate scheduler
-  ;;
-  ;; with control/prompt the core scheduler loop must be decoupled
-  ;; from the implementations of each operation (yield / fork) as the
-  ;; latter are passed in as arguments to user code
   (func $scheduler (param $nextk (ref null $cont))
     (loop $loop
       (if (ref.is_null (local.get $nextk)) (then (return)))
@@ -1072,16 +1085,18 @@ forking as `$yield` and `$fork` functions.
       (br $loop)
     )
   )
+```
 
-  ;; func.bind is needed in the implementations of fork
-  ;;
-  ;; More generally func.bind is needed for any operation that
-  ;; takes arguments.
-  ;;
-  ;; One could use another continuation here instead, but constructing
-  ;; a new continuation every time an operation is invoked seems
-  ;; unnecessarily wasteful.
+The scheduler loop simply keeps on calling prompt with the next thread
+in the queue until the queue of threads is exhausted.
 
+For each scheduler, we invoke the generic scheduler using a
+continuation parameterised by suitable implementations of yield and
+fork.
+
+First, we do the baseline synchronous scheduler.
+
+```wasm
   ;; synchronous scheduler
   (func $handle-yield-sync (param $k (ref $cont))
     (call $scheduler (local.get $k))
@@ -1100,7 +1115,19 @@ forking as `$yield` and `$fork` functions.
     (call $scheduler
       (cont.bind (type $cont) (ref.func $yield) (ref.func $fork-sync) (local.get $k)))
   )
+```
 
+The `func.bind` instruction is needed in the implementations of fork
+More generally `func.bind` is needed for any operation that takes
+arguments. One could use another continuation here instead, but
+constructing a new continuation every time an operation is invoked
+seems unnecessarily wasteful.
+
+All of the asynchronous schedulers make use of the same implementation
+of yield, which enqueues the continuation of the current thread and
+dequeues the next available thread.
+
+```wasm
   ;; asynchronous yield (used by all asynchronous schedulers)
   (func $handle-yield (param $k (ref $cont))
     (call $enqueue (local.get $k))
@@ -1109,6 +1136,11 @@ forking as `$yield` and `$fork` functions.
   (func $yield
     (suspend $control (ref.func $handle-yield))
   )
+```
+
+Each asynchronous scheduler uses its own implementation of fork.
+
+```
   ;; four asynchronous implementations of fork:
   ;;   * kt and tk don't yield on encountering a fork
   ;;     1) kt runs the continuation, queuing up the new thread for later
@@ -1174,17 +1206,21 @@ forking as `$yield` and `$fork` functions.
 (register "scheduler")
 ```
 
+Invoking the schedulers is much like in our original dynamic
+lightweight threads example, but the types are more complex due to the
+need to index the handled computation (`$main` in this case) by the
+implementations of forking and yielding.
 
 ```
 (module
   (type $func (func))       ;; [] -> []
   (type $cont (cont $func)) ;; cont ([] -> [])
 
-  (type $cont-func (func (param (ref $cont)))) ;; [cont ([] -> [])] -> []
-  (type $cont-cont (cont $cont-func))          ;; cont ([cont ([] -> [])] -> [])
+  (type $cont-func (func (param (ref $cont)))) ;; [contref ([] -> [])] -> []
+  (type $cont-cont (cont $cont-func))          ;; cont ([contref ([] -> [])] -> [])
 
-  (type $func-cont-func-func (func (param (ref $func)) (param (ref $cont-func)))) ;; ([] -> []) -> ([cont ([] -> [])] -> []) -> []
-  (type $func-cont-func-cont (cont $func-cont-func-func))                         ;; cont (([] -> []) -> ([cont ([] -> [])] -> []) -> [])
+  (type $func-cont-func-func (func (param (ref $func)) (param (ref $cont-func)))) ;; ([] -> []) -> ([contref ([] -> [])] -> []) -> []
+  (type $func-cont-func-cont (cont $func-cont-func-func))                         ;; contref (([] -> []) -> ([contref ([] -> [])] -> []) -> [])
 
   (func $scheduler-sync (import "scheduler" "sync") (param $nextk (ref $func-cont-func-cont)))
   (func $scheduler-kt (import "scheduler" "kt") (param $nextk (ref $func-cont-func-cont)))
@@ -1214,10 +1250,8 @@ forking as `$yield` and `$fork` functions.
 )
 ```
 
-
-
-(TODO) ...
-
+The output of running this code is just as in the direct
+implementation of dynamic lightweight threads.
 
 ## Implementation Strategies
 
