@@ -23,7 +23,7 @@ single new reference type for *continuations*.
    1. [Lightweight threads (static)](#lightweight-threads-static)
    2. [Lightweight threads (dynamic)](#lightweight-threads-dynamic)
    3. [Actors](#actors)
-   4. [Async/await](#async-await)
+   4. [Async/await](#asyncawait)
    5. [Delimited continuations](#delimited-continuations)
 5. [Implementation strategies](#implementation-strategies)
    1. [Segmented stacks](#segmented-stacks)
