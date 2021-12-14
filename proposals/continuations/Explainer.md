@@ -1666,6 +1666,8 @@ TODO: preemption / asynchrony / interrupts
 
 TODO: how do we interact with parametric polymorphism?
 
+TODO: lexically-scoped handlers
+
 TODO: parametric tags / existential types?
 
 TODO: tag subtyping?
