@@ -26,8 +26,18 @@ single new reference type for *continuations*.
    4. [Async/await](#asyncawait)
    5. [Delimited continuations](#delimited-continuations)
 5. [Implementation strategies](#implementation-strategies)
-   1. [Segmented stacks](#segmented-stacks)
-6. [FAQ](#faq)
+6. [Design considerations and extensions](#design-considerations-and-extensions)
+   1.  [Memory management](#memory-management)
+   2.  [Linear versus constant time dispatch](#linear-versus-constant-time-dispatch)
+   3.  [Named handlers](#named-handlers)
+   4.  [Direct switching](#direct-switching)
+   5.  [Control/prompt as an alternative basis](#controlprompt-as-an-alternative-basis)
+   6.  [Coupling of continuation capture and dispatch](#coupling-of-continuation-capture-and-dispatch)
+   7.  [Tail-resumptive handlers](#tail-resumptive-handlers)
+   8.  [Multi-shot continuations](#multi-shot-continuations)
+   9.  [Interoperability, legacy code, and the barrier instruction](#interoperability-legacy-code-and-the-barrier-instruction)
+   10. [First-class tags](#first-class-tags)
+   11. [Shallow versus deep handlers](#shallow-versus-deep-handlers)
 
 ## Motivation
 
@@ -1237,10 +1247,11 @@ implementation of dynamic lightweight threads.
 
 ## Implementation strategies
 
-### Stack cut'n'paste (TODO)
-
 ### Segmented stacks
 
+TODO
+
+<!--
 Segmented stacks is an implementation technique for
 continuations (cite: Dybvig et al., Chez Scheme, Multicore OCaml). The
 principal idea underpinning segmented stacks is to view each
@@ -1368,11 +1379,28 @@ a "hole" on stack 2, that can be filled by an invocation of
                                    .                     .
 ```
 
+-->
 
 
-## Design Considerations and Extensions
+### Continuation-passing style
 
-### Memory Management
+TODO
+
+### Virtual memory
+
+TODO
+
+### Stack cut'n'paste
+
+TODO
+
+### OS threads
+
+TODO
+
+## Design considerations and extensions
+
+### Memory management
 
 The current proposal does not require a general garbage collector as
 the linearity of continuations guarantees that there are no cycles in
@@ -1385,7 +1413,7 @@ space leaks, most engines will need some form of automated memory
 meanagement for unconsumed continuations. Due to the acyclicity of
 continuations, a reference counting scheme is sufficient.
 
-### Linear vs Constant Time Dispatch
+### Linear versus constant time dispatch
 
 The `suspend` instruction relies on traversing a stack of
 handlers in order to find the appropriate handler, similarly to
@@ -1401,7 +1429,7 @@ constant-time dispatch we would need to know the target stack a
 priori, which might be acheived either by maintaining a shadow stack
 or by extending `suspend` to explicitly target a named handler.
 
-### Named Handlers
+### Named handlers
 
 We can accommodate named handlers by introducing a new reference type
 `handler t*`, which essentially is a unique prompt created by
@@ -1433,7 +1461,7 @@ specific handler:
 If the handler is not currently active, e.g., because an outer handler
 has been suspended, then this instruction would trap.
 
-### Direct Switching
+### Direct switching
 
 The current proposal uses the asymmetric suspend/resume pair of
 primitives that is characteristic of effect handlers. It does not
@@ -1493,7 +1521,7 @@ It seems undesirable that every handler implicitly handles the
 built-in `$Switch` tag, so this should be opt-in by a mode flag on the
 resume instruction(s).
 
-### Control/Prompt as an Alternative Basis
+### Control/prompt as an alternative basis
 
 An alternative to our typed continuations proposal is to use more
 established delimited control operators such as control/prompt and
@@ -1519,7 +1547,7 @@ requirements to source languages, so modularity and ease of reasoning
 may be less critical. Nonetheless, they should not be discounted
 entirely.
 
-### Coupling of Continuation Capture and Dispatch
+### Coupling of continuation capture and dispatch
 
 A possible concern with the current design is that it relies on a
 specific form of dispatch based on tags. Suspending not only captures
@@ -1564,7 +1592,6 @@ critical use-cases requires such a facility. Nevertheless, it is
 natural to envisage a future iteration of this proposal that includes
 an extension for distinguishing tail-resumptive handlers.
 
-
 ### Multi-shot continuations
 
 Continuations in this proposal are *single-shot* (aka *linear*),
@@ -1578,7 +1605,7 @@ it is natural to envisage a future iteration of this proposal that
 includes support for multi-shot continuations by way of a continuation
 clone instruction.
 
-### Interoperability, Legacy Code, and the Barrier Instruction
+### Interoperability, legacy code, and the barrier instruction
 
 The barrier instruction provides a direct way of preventing control
 tags from being suspended outside a particular computation.
@@ -1637,7 +1664,7 @@ TODO: return clauses
 
 TODO: preemption / asynchrony / interrupts
 
-TODO: how do we interact with polymorphism?
+TODO: how do we interact with parametric polymorphism?
 
 TODO: parametric tags / existential types?
 
