@@ -115,24 +115,6 @@ type. Roughly, control tags can be thought of as resumable exceptions.
 Typed continuations may be efficiently implemented using segmented
 stacks, but other implementations are also possible.
 
-<!-- Many industrial-grade programming languages feature non-local control
-flow abstractions such as async/await (C#/F#/JavaScript/Rust/Scala),
-coroutines (C++/Go/Smalltalk), generators/iterators
-(C#/F#/Haskell/JavaScript/Racket/Python), effect handlers (OCaml),
-call/cc (Racket), and so forth. Currently, Wasm lacks support for
-implementing such control flow abstractions efficiently, since Wasm
-does not provide any primitives for manipulating segments of the
-execution stack. One possible approach is to add special support for
-each of the aforementioned control abstractions, though, what about
-the next 700 control abstractions? Adding individual support is not a
-sustainable strategy as it does not scale. Instead, the goal of this
-proposal is to introduce a general structured mechanism, which enables
-the aforementioned and the next 700 control abstractions to be
-implemented efficiently. Specifically, the idea is to provide an
-interface for structured manipulation of the execution stack via
-*typed delimited continuations*.-->
-<!-- TODO mention highly scalable concurrency a la Erlang as a use case -->
-
 ## Additional requirements
 
  * **No GC dependency**: We intend every language to be able to use
@@ -166,7 +148,7 @@ interface for structured manipulation of the execution stack via
 
 The proposal adds a new reference type for continuations.
 
-```wat
+```wasm
   (cont $t)
 ```
 
@@ -176,7 +158,7 @@ continuation, and whose return types `tr*` describes the stack
 shape after the continuation has run to completion.
 
 As a shorthand, we will often write the function type inline and write a continuation type as
-```wat
+```wasm
   (cont [tp*] -> [tr*])
 ```
 
@@ -187,7 +169,7 @@ A control tag is similar to an exception extended with a result type
 *resumable* exception. A tag declaration provides the type signature
 of a control tag.
 
-```wat
+```wasm
   (tag $e (param tp*) (result tr*))
 ```
 
@@ -203,7 +185,7 @@ for indicating that such a declaration is in scope.
 The following instruction creates a continuation in *suspended state*
 from a function.
 
-```wat
+```wasm
   cont.new $ct : [(ref $ft)] -> [(ref $ct)]
   where:
   - $ft = func [t1*] -> [t2*]
@@ -223,7 +205,7 @@ The first way to invoke a continuation resumes the continuation under
 a *handler*, which handles subsequent control suspensions within the
 continuation.
 
-```wat
+```wasm
   resume (tag $e $l)* : [tp* (ref $ct)] -> [tr*]
   where:
   - $ct = cont [tp*] -> [tr*]
@@ -240,7 +222,7 @@ the control tag invocation site. This amounts to performing "an
 abortive action" which causes the stack to be unwound.
 
 
-```wat
+```wasm
   resume_throw $exn : [tp* (ref $ct)])] -> [tr*]
   where:
   - $ct = cont [ta*] -> [tr*]
@@ -262,7 +244,7 @@ A computation running inside a continuation can suspend itself by
 invoking one of the declared control tags.
 
 
-```wat
+```wasm
   suspend $e : [tp*] -> [tr*]
   where:
   - $e : [tp*] -> [tr*]
@@ -290,7 +272,7 @@ continuation with compatible type (the [Examples](#examples) section
 provides several example usages of `cont.bind`).
 
 
-```wat
+```wasm
   cont.bind $ct2 : [tp1* (ref $ct1)] -> [(ref $ct2)]
   where:
   $ct1 = cont [tp1* tp2*] -> [tr*]
@@ -310,7 +292,7 @@ certain abstraction or language boundaries, we provide an instruction
 for explicitly trapping attempts at reifying stacks across a certain
 point.
 
-```wat
+```wasm
   barrier $l bt instr* end : [t1*] -> [t2*]
   where:
   - bt = [t1*] -> [t2*]
@@ -972,7 +954,7 @@ handlers for defining different schedulers. Here instead we
 parameterise the whole example by the behaviour of yielding and
 forking as `$yield` and `$fork` functions.
 
-```
+```wasm
 (module $example
   (type $func (func))       ;; [] -> []
   (type $cont (cont $func)) ;; cont ([] -> [])
@@ -1140,7 +1122,7 @@ dequeues the next available thread.
 
 Each asynchronous scheduler uses its own implementation of fork.
 
-```
+```wasm
   ;; four asynchronous implementations of fork:
   ;;   * kt and tk don't yield on encountering a fork
   ;;     1) kt runs the continuation, queuing up the new thread for later
@@ -1211,7 +1193,7 @@ lightweight threads example, but the types are more complex due to the
 need to index the handled computation (`$main` in this case) by the
 implementations of forking and yielding.
 
-```
+```wasm
 (module
   (type $func (func))       ;; [] -> []
   (type $cont (cont $func)) ;; cont ([] -> [])
@@ -1426,7 +1408,7 @@ We can accommodate named handlers by introducing a new reference type
 executing a variant of the `resume` instruction and is passed to the
 continuation:
 
-```wat
+```wasm
   resume_with (tag $e $l)* : [ t1* (ref $ht) ] -> [ t2* ]
   where:
   - $ht = handler t2*
@@ -1441,7 +1423,7 @@ construction.
 This instruction is complemented by an instruction for suspending to a
 specific handler:
 
-```wat
+```wasm
   suspend_to $e : [ s* (ref $ht) ] -> [ t* ]
   where:
   - $ht = handler tr*
@@ -1468,7 +1450,7 @@ symmetric `switch_to` primitive.
 Given named handlers, it is possible to introduce a somewhat magic
 instruction for switching directly to another continuation:
 
-```wat
+```wasm
   switch_to : [ t1* (ref $ct1) (ref $ht) ] -> [ t2* ]
   where:
   - $ht = handler t3*
@@ -1478,7 +1460,7 @@ instruction for switching directly to another continuation:
 
 This behaves as if there was a built-in tag
 
-```wat
+```wasm
   (tag $Switch (param t1* (ref $ct1)) (result t3*))
 ```
 
@@ -1500,7 +1482,7 @@ In fact, symmetric switching need not necessarily be tied to named
 handlers, since there could also be an indirect version with dynamic
 handler lookup:
 
-```wat
+```wasm
   switch : [ t1* (ref $ct1) ] -> [ t2* ]
   where:
   - $ct1 = cont ([ (ref $ct2) t1* ] -> [ t3* ])
