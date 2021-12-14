@@ -23,8 +23,8 @@ single new reference type for *continuations*.
    1. [Lightweight threads (static)](#lightweight-threads-static)
    2. [Lightweight threads (dynamic)](#lightweight-threads-dynamic)
    3. [Actors](#actors)
-   4. [Async/await](#async-await-continuations)
-   5. [Delimited continuations](#binding-continuations)
+   4. [Async/await](#async-await)
+   5. [Delimited continuations](#delimited-continuations)
 5. [Implementation strategies](#implementation-strategies)
    1. [Segmented stacks](#segmented-stacks)
 6. [FAQ](#faq)
@@ -890,9 +890,13 @@ The output is as follows, demonstrating the various different scheduling behavio
 -6 : i32
 ```
 
-### Actors (TODO)
+### Actors
 
-### Async/await (TODO)
+TODO
+
+### Async/await
+
+TODO
 
 ### Delimited continuations
 
