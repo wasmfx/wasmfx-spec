@@ -1,4 +1,4 @@
-# Typed Continuations
+# Typed continuations
 
 This document provides an informal presentation of the *typed
 continuations* proposal, a minimal and compatible extension to Wasm
@@ -8,29 +8,25 @@ system. It extends the instruction set with instructions to suspend,
 resume, and abort computations, and extends the type system with a
 single new reference type for *continuations*.
 
-**TODO**
-* [x] Introduce the concept of delimited continuations
-* [x] Control tags (aka. effectful operations)
-* [x] Invocation of control tags
-* [x] Abortion of suspended computations
-* [ ] Linearity constraint
-* [x] Mention the connection with stacks early on
-* [ ] Intuition: asymmetric coroutines sprinkled with some effect handlers goodies
-
 ## Table of contents
 
 1. [Motivation](#motivation)
-2. [Additional Requirements](#additional-requirements)
-3. [Instruction Set](#instruction-set)
-   1. [Declaring Control Tags](#declaring-control-tags)
-   2. [Creating Continuations](#creating-continuations)
-   3. [Resuming Continuations](#resuming-continuations)
-   4. [Suspending Continuations](#suspending-continuations)
-   5. [Binding Continuations](#binding-continuations)
-   6. [Trapping Continuations](#trapping-continuations)
+2. [Additional requirements](#additional-requirements)
+3. [Instruction set](#instruction-set)
+   1. [Declaring control tags](#declaring-control-tags)
+   2. [Creating continuations](#creating-continuations)
+   3. [Resuming continuations](#resuming-continuations)
+   4. [Suspending continuations](#suspending-continuations)
+   5. [Binding continuations](#binding-continuations)
+   6. [Trapping continuations](#trapping-continuations)
 4. [Examples](#examples)
-5. [Implementation Strategies](#implementation-strategies)
-   1. [Segmented Stacks](#segmented-stacks)
+   1. [Lightweight threads (static)](#lightweight-threads-static)
+   2. [Lightweight threads (dynamic)](#lightweight-threads-dynamic)
+   3. [Actors](#actors)
+   4. [Async/await](#async-await-continuations)
+   5. [Delimited continuations](#binding-continuations)
+5. [Implementation strategies](#implementation-strategies)
+   1. [Segmented stacks](#segmented-stacks)
 6. [FAQ](#faq)
 
 ## Motivation
@@ -78,7 +74,7 @@ control tags as a means for writing an interface for the possible
 kinds of non-local transfers (or stack switches) that a computation
 may perform.
 
-### Typed Continuation Primer
+### Typed continuation primer
 
 A *continuation* is a first-class program object that represents the
 remainder of computation from a certain point in the execution of a
@@ -137,7 +133,7 @@ interface for structured manipulation of the execution stack via
 *typed delimited continuations*.-->
 <!-- TODO mention highly scalable concurrency a la Erlang as a use case -->
 
-## Additional Requirements
+## Additional requirements
 
  * **No GC dependency**: We intend every language to be able to use
    typed continuations to implement non-local flow abstractions
@@ -166,7 +162,7 @@ interface for structured manipulation of the execution stack via
    need not be automatic (in the same vein as explicit synchronisation
    might be needed when adding threads and shared memory).
 
-## Instruction Set
+## Instruction set
 
 The proposal adds a new reference type for continuations.
 
@@ -184,7 +180,7 @@ As a shorthand, we will often write the function type inline and write a continu
   (cont [tp*] -> [tr*])
 ```
 
-### Declaring Control Tags
+### Declaring control tags
 
 A control tag is similar to an exception extended with a result type
 (or list thereof). Operationally, a control tag may be thought of as a
@@ -202,7 +198,7 @@ stack layout following an invocation of the operation. In this
 document we will sometimes write `$e : [tp*] -> [tr*]` as shorthand
 for indicating that such a declaration is in scope.
 
-### Creating Continuations
+### Creating continuations
 
 The following instruction creates a continuation in *suspended state*
 from a function.
@@ -219,7 +215,7 @@ a function of type `[t1*] -> [t2*]`. The body of this function is a
 computation that may perform non-local control flow.
 
 
-### Invoking Continuations
+### Invoking continuations
 
 There are two ways to invoke (or run) a continuation.
 
@@ -260,7 +256,7 @@ the context of the supplied continuation. As an exception is being
 raised (the continuation is not actually being supplied a value) the
 parameter types for the continuation `ta*` are unconstrained.
 
-### Suspending Continuations
+### Suspending continuations
 
 A computation running inside a continuation can suspend itself by
 invoking one of the declared control tags.
@@ -281,7 +277,7 @@ exception. The key difference is that the continuation at the
 suspension point expects to be resumed later with arguments of types
 `tr*`.
 
-### Binding Continuations
+### Binding continuations
 
 The parameter list of a continuation may be shrunk via `cont.bind`. This
 instruction provides a way to partially apply a given
@@ -307,7 +303,7 @@ continuation of type `$ct1`, yielding a modified continuation of type
 its continuation argument, and yields a new continuation that can be
 supplied to either `resume`,`resume_throw`, or `cont.bind`.
 
-### Trapping Continuations
+### Trapping continuations
 
 In order to allow ensuring that control cannot be captured across
 certain abstraction or language boundaries, we provide an instruction
@@ -326,9 +322,9 @@ The `barrier` instruction is a block with label `$l`, block type
 by `instr*`. Operationally, `barrier` may be viewed as a "catch-all"
 handler, that handles any control tag by invoking a trap.
 
-## Continuation Lifetime
+## Continuation lifetime
 
-### Producing Continuations
+### Producing continuations
 
 There are three different ways in which continuations are produced
 (`cont.new,suspend,cont.bind`). A fresh continuation object is
@@ -342,7 +338,7 @@ new closure, as continuations are single-shot no allocation is
 necessary: all allocation happens when the original continuation is
 created by preallocating one slot for each continuation argument.
 
-### Consuming Continuations
+### Consuming continuations
 
 There are three different ways in which continuations are consumed
 (`resume,resume_throw,cont.bind`). A continuation is resumed with a
@@ -1253,11 +1249,11 @@ implementations of forking and yielding.
 The output of running this code is just as in the direct
 implementation of dynamic lightweight threads.
 
-## Implementation Strategies
+## Implementation strategies
 
 ### Stack cut'n'paste (TODO)
 
-### Segmented Stacks
+### Segmented stacks
 
 Segmented stacks is an implementation technique for
 continuations (cite: Dybvig et al., Chez Scheme, Multicore OCaml). The
@@ -1564,7 +1560,7 @@ implementation does not require static stack typing, something that is
 fundamental to the design of Wasm. Thus, the implementation does not
 need to contend directly with the higher-order type of `control`.
 
-### Tail-resumptive Handlers
+### Tail-resumptive handlers
 
 A handler is said to be *tail-resumptive* if the handler invokes the
 continuation in tail-position in every control tag clause. The
@@ -1583,7 +1579,7 @@ natural to envisage a future iteration of this proposal that includes
 an extension for distinguishing tail-resumptive handlers.
 
 
-### Multi-shot Continuations
+### Multi-shot continuations
 
 Continuations in this proposal are *single-shot* (aka *linear*),
 meaning that they must be invoked exactly once (though this is not
